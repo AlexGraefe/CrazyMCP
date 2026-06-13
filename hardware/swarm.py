@@ -7,9 +7,9 @@ It reports progress back to whatever object implements :class:`SwarmGUI`
 
 import asyncio
 from enum import Enum, auto
-from typing import Any
 
 import numpy as np
+from .swarm_logger import LoggingTask
 from .swarm_force_field_control import ForceFieldController
 
 from cflib2 import Crazyflie, LinkContext
@@ -89,8 +89,7 @@ class Swarm:
         self._state = SwarmState.UNCONNECTED
         self._connected_cfs: list[object] = []
         self._link_context: object | None = None
-        self._live_log_streams: list[object] = []
-        self._latest_positions: list[dict[str, Any]] = []
+        self._position_logger: LoggingTask | None = None
         self._connect_task: asyncio.Task | None = None
         self._fly_task: asyncio.Task | None = None
         self._ff_task: asyncio.Task | None = None
@@ -202,7 +201,8 @@ class Swarm:
         except Exception as exc:
             print(f"Emergency land error: {exc}")
         finally:
-            await self._stop_live_position_logging()
+            if self._position_logger:
+                await self._position_logger.stop()
             self._set_state(SwarmState.CONNECTED)
 
     def land(self) -> None:
@@ -257,7 +257,8 @@ class Swarm:
             self._set_state(SwarmState.ERROR)
             return
         finally:
-            await self._stop_live_position_logging()
+            if self._position_logger:
+                await self._position_logger.stop()
         self._set_state(SwarmState.CONNECTED)
 
     def start(self) -> None:
@@ -286,14 +287,24 @@ class Swarm:
                 param.set("stabilizer.controller", 1)
 
             print("Reading pad positions...")
-            self._pad_positions = list(
-                await asyncio.gather(
-                    *[self._read_pad_position(cf) for cf in self._connected_cfs]
-                )
+            temp_logger = LoggingTask(
+                self._connected_cfs, ["stateEstimate.x", "stateEstimate.y", "stateEstimate.z"], LOG_INTERVAL
             )
+            pos_data = await temp_logger.read_once()
+            self._pad_positions = [
+                (
+                    float(d["stateEstimate.x"]),
+                    float(d["stateEstimate.y"]),
+                    float(d["stateEstimate.z"]),
+                ) if d else (0.0, 0.0, 0.0)
+                for d in pos_data
+            ]
 
-            print("Starting live position logger streams...")
-            await self._start_live_position_logging()
+            print("Starting live position logger...")
+            self._position_logger = LoggingTask(
+                self._connected_cfs, ["stateEstimate.x", "stateEstimate.y", "stateEstimate.z"], LOG_INTERVAL
+            )
+            await self._position_logger.start()
 
             print("Arming drones...")
             await asyncio.gather(
@@ -314,8 +325,8 @@ class Swarm:
 
             # Initialise virtual setpoints from measured positions after takeoff.
             self._virtual_positions = []
-            for pos_data in self._latest_positions:
-                data = pos_data.get("data")
+            for i in range(len(self._connected_cfs)):
+                data = self._position_logger.get_log(i)
                 if data:
                     self._virtual_positions.append(np.array([
                         float(data["stateEstimate.x"]),
@@ -335,7 +346,8 @@ class Swarm:
             self._set_state(SwarmState.FLYING)
         except Exception as exc:
             self._set_state(SwarmState.ERROR)
-            await self._stop_live_position_logging()
+            if self._position_logger:
+                await self._position_logger.stop()
 
     def safegoto(self, positions: list) -> None:
         """Update target positions consumed by the force-field loop.
@@ -460,44 +472,3 @@ class Swarm:
         )
         self._connected_cfs = []
         self._link_context = None
-
-    @staticmethod
-    async def _read_pad_position(cf: object) -> tuple[float, float, float]:
-        log = cf.log()
-        block = await log.create_block()
-        await block.add_variable("stateEstimate.x")
-        await block.add_variable("stateEstimate.y")
-        await block.add_variable("stateEstimate.z")
-        log_stream = await block.start(LOG_INTERVAL)
-        try:
-            values = (await log_stream.next()).data
-            return (
-                float(values["stateEstimate.x"]),
-                float(values["stateEstimate.y"]),
-                float(values["stateEstimate.z"]),
-            )
-        finally:
-            await log_stream.stop()
-
-    async def _start_live_position_logging(self) -> None:
-        self._latest_positions = [{"data": None} for _ in self._connected_cfs]
-        self._live_log_streams = []
-
-        for cf in self._connected_cfs:
-            log = cf.log()
-            block = await log.create_block()
-            await block.add_variable("stateEstimate.x")
-            await block.add_variable("stateEstimate.y")
-            await block.add_variable("stateEstimate.z")
-            log_stream = await block.start(LOG_INTERVAL)
-            self._live_log_streams.append(log_stream)
-
-    async def _stop_live_position_logging(self) -> None:
-        for stream in self._live_log_streams:
-            stop = getattr(stream, "stop", None)
-            if callable(stop):
-                result = stop()
-                if asyncio.iscoroutine(result):
-                    await result
-        self._live_log_streams = []
-        self._latest_positions = []
