@@ -1,6 +1,7 @@
 import asyncio
 import numpy as np
-from .swarm import Swarm, SwarmState
+from .swarm import Swarm
+from .swarm_base import SwarmState
 
 FF_POSITION_TOLERANCE = 0.05
 
@@ -42,7 +43,7 @@ class SwarmController:
     def takeoff(self) -> str:
         if self._swarm.state != SwarmState.CONNECTED:
             return f"Cannot takeoff: swarm must be in CONNECTED state (current: {self._swarm.state.name})"
-        self._swarm.start()
+        self._swarm.takeoff()
         return "Takeoff sequence initiated..."
 
     def land(self) -> str:

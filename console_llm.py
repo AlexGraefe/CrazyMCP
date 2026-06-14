@@ -1,8 +1,10 @@
+import argparse
 import asyncio
 from langchain.tools import tool
 from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
 from hardware import Swarm, SwarmController
+from hardware.swarm_base import SwarmState
 
 SYSTEM_PROMPT = """You are connected to a Crazyflie drone swarm that you can control via Python code.
 
@@ -81,7 +83,15 @@ async def console_loop(agent) -> None:
 async def main() -> None:
     global _swarm_controller
 
-    swarm = Swarm()
+    parser = argparse.ArgumentParser(description="Crazyflie Swarm LLM Console")
+    parser.add_argument("--simulated", action="store_true", help="Use simulated swarm instead of hardware")
+    args = parser.parse_args()
+
+    if args.simulated:
+        from simulator import SimulatedSwarm
+        swarm = SimulatedSwarm()
+    else:
+        swarm = Swarm()
     _swarm_controller = SwarmController(swarm)
     _swarm_controller.start_execution_task()
 

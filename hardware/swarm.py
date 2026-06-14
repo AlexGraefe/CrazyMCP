@@ -6,9 +6,9 @@ It reports progress back to whatever object implements :class:`SwarmGUI`
 """
 
 import asyncio
-from enum import Enum, auto
 
 import numpy as np
+from .swarm_base import SwarmBase, SwarmState
 from .swarm_logger import LoggingTask
 from .swarm_force_field_control import ForceFieldController
 
@@ -44,28 +44,10 @@ FF_BOUNDARY_MAX             = np.array([ 1.5,  1.5, 2.0])
 
 
 # ---------------------------------------------------------------------------
-# State
-# ---------------------------------------------------------------------------
-
-class SwarmState(Enum):
-    UNCONNECTED = auto()
-    CONNECTED   = auto()
-    FLYING      = auto()
-    LANDED      = auto()
-    ERROR       = auto()
-
-
-# ---------------------------------------------------------------------------
-# SwarmGUI protocol
-# ---------------------------------------------------------------------------
-
-
-
-# ---------------------------------------------------------------------------
 # Swarm
 # ---------------------------------------------------------------------------
 
-class Swarm:
+class Swarm(SwarmBase):
     """Async state machine that controls a Crazyflie swarm.
 
     Public API::
@@ -261,7 +243,7 @@ class Swarm:
                 await self._position_logger.stop()
         self._set_state(SwarmState.CONNECTED)
 
-    def start(self) -> None:
+    def takeoff(self) -> None:
         """Arm all connected drones, take off, and start the force-field loop.
 
         Returns immediately; ignored if already flying or no drones connected.
@@ -458,7 +440,6 @@ class Swarm:
         if task.cancelled():
             return
         _ = task.exception()
-    
 
     async def _disconnect_all(self) -> None:
         if not self._connected_cfs:
