@@ -15,6 +15,10 @@ class SimulatedPositionLogger:
     def __init__(self, positions: list):
         self._positions = positions
     
+    def update_positions(self, positions: list) -> None:
+        """Update positions for simulated logging."""
+        self._positions = positions
+    
     def get_log(self, index: int) -> dict | None:
         """Return simulated position data for a drone."""
         if 0 <= index < len(self._positions):
@@ -38,8 +42,6 @@ class SimulatedSwarm(SwarmBase):
         self._connected_uris: list[str] = []
         self._position_logger: SimulatedPositionLogger | None = None
         self._connected_cfs: list[str] = []
-        self._connect_task: asyncio.Task | None = None
-        self._fly_task: asyncio.Task | None = None
         self._ff_task: asyncio.Task | None = None
         self._virtual_positions: list[np.ndarray] = []
         self._target_positions: list[np.ndarray | None] = []
@@ -56,11 +58,8 @@ class SimulatedSwarm(SwarmBase):
 
     # -- Public API ----------------------------------------------------------
 
-    def connect(self, base_address: str, num_drones: int) -> None:
+    async def connect(self, base_address: str, num_drones: int) -> None:
         """Immediately transition to CONNECTED state."""
-        if self._connect_task is not None and not self._connect_task.done():
-            return
-        
         self._connected_uris = [f"{base_address}{index:02X}" for index in range(1, num_drones + 1)]
         self._connected_cfs = [f"drone_{i}" for i in range(num_drones)]
         print(f"Simulated connect to {num_drones} drone(s): {', '.join(self._connected_uris)}")
@@ -75,15 +74,11 @@ class SimulatedSwarm(SwarmBase):
         self._position_logger = None
         self._set_state(SwarmState.UNCONNECTED)
 
-    def takeoff(self) -> None:
+    async def takeoff(self) -> None:
         """Transition to FLYING state, initialize virtual positions."""
         if self._state != SwarmState.CONNECTED:
             return
-        if self._fly_task is not None and not self._fly_task.done():
-            return
-        
-        self._fly_task = asyncio.create_task(self._takeoff_impl())
-        self._fly_task.add_done_callback(self._on_fly_task_done)
+        await self._takeoff_impl()
 
     async def _takeoff_impl(self) -> None:
         """Simulate takeoff - initialize virtual positions at hover height."""
@@ -99,12 +94,12 @@ class SimulatedSwarm(SwarmBase):
         print("Simulated takeoff complete, hovering...")
         self._set_state(SwarmState.FLYING)
 
-    def land(self) -> None:
+    async def land(self) -> None:
         """Transition to LANDED state."""
         if self._state != SwarmState.FLYING:
             return
         
-        asyncio.create_task(self._land_impl())
+        await self._land_impl()
 
     async def _land_impl(self) -> None:
         """Simulate landing - transition to LANDED."""
@@ -120,7 +115,6 @@ class SimulatedSwarm(SwarmBase):
 
     async def emergency_land(self) -> None:
         """Immediately transition to LANDED then CONNECTED."""
-        self._ff_task = None
         self._virtual_positions = []
         self._target_positions = []
         self._position_logger = None
@@ -147,29 +141,16 @@ class SimulatedSwarm(SwarmBase):
             for p in self._target_positions
         ]
         
+        if self._position_logger:
+            self._position_logger.update_positions(
+                [(float(p[0]), float(p[1]), float(p[2])) for p in self._virtual_positions]
+            )
+        
         print(f"Simulated goto: {positions}")
 
     def get_positions(self) -> list[tuple[float, float, float]] | None:
         if not self._connected_cfs:
             return None
-        if self._position_logger:
-            positions = []
-            for i in range(len(self._connected_cfs)):
-                log = self._position_logger.get_log(i)
-                if log:
-                    positions.append((
-                        float(log.get("stateEstimate.x", 0.0)),
-                        float(log.get("stateEstimate.y", 0.0)),
-                        float(log.get("stateEstimate.z", 0.0))
-                    ))
-                else:
-                    positions.append((0.0, 0.0, 0.0))
-            return positions
         if self._virtual_positions:
             return [(float(p[0]), float(p[1]), float(p[2])) for p in self._virtual_positions]
         return None
-
-    def _on_fly_task_done(self, task: asyncio.Task) -> None:
-        self._fly_task = None
-        if task.cancelled():
-            return

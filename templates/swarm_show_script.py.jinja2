@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Auto-generated swarm show script."""
+import asyncio
+import sys
+import os
+
+sys.path.insert(0, "{{ project_root }}")
+
+import numpy as np
+from hardware import Swarm
+from simulator import SimulatedSwarm
+
+{{ swarm_show_func }}
+
+async def main():
+    SwarmClass = SimulatedSwarm if {{ simulated }} else Swarm
+    swarm = SwarmClass()
+    
+    try:
+        await swarm.connect("{{ base_address }}", {{ num_drones }})
+        await swarm.takeoff()
+        
+        start_time = asyncio.get_running_loop().time()
+        while True:
+            elapsed = asyncio.get_running_loop().time() - start_time
+            setpoints, finished = swarm_show(elapsed)
+            swarm.goto(setpoints)
+            if finished:
+                break
+            await asyncio.sleep(0.1)
+        
+        await swarm.land()
+    except Exception as e:
+        print(f"Error during swarm show: {e}")
+        try:
+            await swarm.land()
+        except Exception:
+            pass
+    finally:
+        await swarm.disconnect()
+
+if __name__ == "__main__":
+    asyncio.run(main())

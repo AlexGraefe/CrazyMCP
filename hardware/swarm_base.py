@@ -23,27 +23,27 @@ class SwarmBase(ABC):
         pass
 
     @abstractmethod
-    def connect(self, base_address: str, num_drones: int) -> None:
+    async def connect(self, base_address: str, num_drones: int) -> None:
         """Connect to *num_drones* drones derived from *base_address*."""
         pass
 
     @abstractmethod
-    def disconnect(self) -> None:
+    async def disconnect(self) -> None:
         """Disconnect all drones."""
         pass
 
     @abstractmethod
-    def takeoff(self) -> None:
+    async def takeoff(self) -> None:
         """Arm all connected drones, take off, and start the force-field loop."""
         pass
 
     @abstractmethod
-    def land(self) -> None:
+    async def land(self) -> None:
         """Navigate to pad positions and land."""
         pass
 
     @abstractmethod
-    def emergency_land(self) -> None:
+    async def emergency_land(self) -> None:
         """Immediately land all connected drones regardless of current state."""
         pass
 
@@ -56,3 +56,7 @@ class SwarmBase(ABC):
     def get_positions(self) -> list[tuple[float, float, float]] | None:
         """Return current positions of all drones as (x, y, z) tuples."""
         pass
+
+    def goto(self, positions: list) -> None:
+        """Alias for safegoto - update target positions."""
+        return self.safegoto(positions)

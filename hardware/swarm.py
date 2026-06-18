@@ -72,8 +72,6 @@ class Swarm(SwarmBase):
         self._connected_cfs: list[object] = []
         self._link_context: object | None = None
         self._position_logger: LoggingTask | None = None
-        self._connect_task: asyncio.Task | None = None
-        self._fly_task: asyncio.Task | None = None
         self._ff_task: asyncio.Task | None = None
         self._pad_positions: list[tuple[float, float, float]] = []
         self._virtual_positions: list[np.ndarray] = []
@@ -107,18 +105,14 @@ class Swarm(SwarmBase):
                 positions.append((0.0, 0.0, 0.0))
         return positions
 
-    def connect(self, base_address: str, num_drones: int) -> None:
+    async def connect(self, base_address: str, num_drones: int) -> None:
         """Start connecting to *num_drones* drones derived from *base_address*.
 
-        Returns immediately; progress is reported via :class:`SwarmGUI` callbacks.
-        Ignored if a connection attempt is already in progress.
+        Returns when connection is complete.
         """
-        if self._connect_task is not None and not self._connect_task.done():
+        if self._state != SwarmState.UNCONNECTED:
             return
-        self._connect_task = asyncio.create_task(
-            self._connect_impl(base_address, num_drones)
-        )
-        self._connect_task.add_done_callback(self._on_connect_task_done)
+        await self._connect_impl(base_address, num_drones)
 
     async def _connect_impl(self, base_address: str, num_drones: int) -> None:
         """Internal coroutine that performs the actual connection sequence."""
@@ -152,28 +146,20 @@ class Swarm(SwarmBase):
     async def disconnect(self) -> None:
         """Disconnect all drones.
 
-        Cancels the force-field loop and any in-progress fly sequence first.
+        Cancels the force-field loop first.
         Transitions: * → UNCONNECTED.
         """
         await self._cancel_ff_loop()
-        if self._fly_task is not None and not self._fly_task.done():
-            self._fly_task.cancel()
-            await asyncio.gather(self._fly_task, return_exceptions=True)
-            self._fly_task = None
         await self._disconnect_all()
         self._set_state(SwarmState.UNCONNECTED)
 
     async def emergency_land(self) -> None:
         """Immediately land all connected drones regardless of current state.
 
-        Cancels the force-field loop and any in-progress fly sequence first.
+        Cancels the force-field loop first.
         Transitions: * → CONNECTED (so the operator can reconnect and retry).
         """
         await self._cancel_ff_loop()
-        if self._fly_task is not None and not self._fly_task.done():
-            self._fly_task.cancel()
-            await asyncio.gather(self._fly_task, return_exceptions=True)
-            self._fly_task = None
         if not self._connected_cfs:
             return
 
@@ -203,19 +189,16 @@ class Swarm(SwarmBase):
                 await self._position_logger.stop()
             self._set_state(SwarmState.CONNECTED)
 
-    def land(self) -> None:
+    async def land(self) -> None:
         """Redirect drones to their pad positions and land.
 
         Redirects the force-field loop toward the pad positions + 1 m, waits
         until the virtual model is within tolerance, stops the loop, and issues
-        the land command.  Returns immediately; ignored if not currently flying.
+        the land command.
         """
         if self._state != SwarmState.FLYING:
             return
-        if self._fly_task is not None and not self._fly_task.done():
-            return
-        self._fly_task = asyncio.create_task(self._land_impl())
-        self._fly_task.add_done_callback(self._on_fly_task_done)
+        await self._land_impl()
 
     async def _land_impl(self) -> None:
         """Redirect FF loop toward pads, wait until there, stop loop, land."""
@@ -259,20 +242,16 @@ class Swarm(SwarmBase):
                 await self._position_logger.stop()
         self._set_state(SwarmState.CONNECTED)
 
-    def takeoff(self) -> None:
+    async def takeoff(self) -> None:
         """Arm all connected drones, take off, and start the force-field loop.
 
-        Returns immediately; ignored if already flying or no drones connected.
         After the take-off sequence completes the force-field background loop
         runs until :meth:`land`, :meth:`emergency_land`, or :meth:`disconnect`
         is called.
         """
-        if not self._connected_cfs:
+        if self._state != SwarmState.CONNECTED:
             return
-        if self._fly_task is not None and not self._fly_task.done():
-            return
-        self._fly_task = asyncio.create_task(self._takeoff_impl())
-        self._fly_task.add_done_callback(self._on_fly_task_done)
+        await self._takeoff_impl()
 
     async def _takeoff_impl(self) -> None:
         """Arm drones, lift to hover height, then spawn the FF background loop."""
@@ -364,6 +343,10 @@ class Swarm(SwarmBase):
             for i in range(n)
         ]
 
+    def goto(self, positions: list) -> None:
+        """Alias for safegoto - update target positions using simpler name."""
+        return self.safegoto(positions)
+
     # -- Force-field background loop -----------------------------------------
 
     async def _ff_loop_impl(self) -> None:
@@ -444,18 +427,6 @@ class Swarm(SwarmBase):
             await asyncio.sleep(0.1)
 
     # -- Private helpers -----------------------------------------------------
-
-    def _on_connect_task_done(self, task: asyncio.Task) -> None:
-        self._connect_task = None
-        if task.cancelled():
-            return
-        _ = task.exception()
-
-    def _on_fly_task_done(self, task: asyncio.Task) -> None:
-        self._fly_task = None
-        if task.cancelled():
-            return
-        _ = task.exception()
 
     async def _disconnect_all(self) -> None:
         if not self._connected_cfs:

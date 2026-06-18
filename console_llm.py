@@ -1,54 +1,88 @@
 import argparse
 import asyncio
+import os
+import tempfile
+from pathlib import Path
 from langchain.tools import tool
+from jinja2 import Environment, FileSystemLoader
 from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
-from hardware import Swarm, SwarmController
-from hardware.swarm_base import SwarmState
-from visualization import SwarmVisualizer
 
-SYSTEM_PROMPT = """You are connected to a Crazyflie drone swarm that you can control via Python code.
+import sys
 
-The swarm has the following states: UNCONNECTED → CONNECTED → FLYING → LANDED/ERROR.
+SYSTEM_PROMPT = """You control a Crazyflie drone swarm. Write a function `swarm_show(current_time: float)` that returns:
+- A list of (x, y, z) setpoints for each drone as tuples
+- A boolean indicating if the show is finished
 
-A `swarm` object is available in your execution namespace with these methods:
-- swarm.state -> str: Returns current state (UNCONNECTED, CONNECTED, FLYING, LANDED, ERROR)
-- swarm.connect(base_address, num_drones) -> str: Connect to drones
-- swarm.takeoff() -> str: Start takeoff sequence (must be in CONNECTED state)
-- swarm.land() -> str: Land all drones (must be in FLYING state)
-- swarm.emergency_stop() -> None: Immediately land all drones
-- swarm.disconnect() -> str: Disconnect from drones
-- swarm.get_positions() -> list[(x,y,z)] | None: Get current drone positions
-- swarm.num_drones() -> int: Get number of connected drones
+The function receives elapsed time in seconds since takeoff. Return positions for all connected drones.
+Return (setpoints, False) to continue the show, (setpoints, True) to end and land.
 
-Use asyncio and numpy (available as np) in your code. Write complete Python code and it will be queued for execution.
+Example:
+def swarm_show(current_time: float):
+    import math
+    x = 0.5 * math.cos(current_time)
+    y = 0.5 * math.sin(current_time)
+    setpoints = [(x, y, 1.0), (-x, -y, 1.0), (0, 0, 1.0)]
+    finished = current_time > 10.0
+    return setpoints, finished
 
-Examples:
-- To connect to 3 drones: swarm.connect("radio://0/80/2M/E7E7E7E7E", 3)
-- To take off: swarm.takeoff()
-- To move to (0.5, 0.0, 1.0): swarm.goto([(0.5, 0.0, 1.0)])
-- To get positions: positions = swarm.get_positions(); print(positions)
-- To land: swarm.land()
+Use the swarm_show_execute tool to run your swarm_show function.
 """
 
-_swarm_controller: SwarmController | None = None
-
 @tool(parse_docstring=True)
-def swarm_execute(code: str) -> str:
-    """Add Python code to the execution queue for the swarm.
+def swarm_show_execute(swarm_show_func: str, num_drones: int = 3, simulated: bool = True) -> str:
+    """Execute a swarm show by generating and running a complete script.
 
     Args:
-        code (str): Python code to queue for execution.
-    
-    Returns:
-        str: Status message indicating if code was queued or error occurred.
-    """
-    global _swarm_controller
-    if _swarm_controller is None:
-        return "Error: Swarm controller not initialized"
+        swarm_show_func: Python function code for swarm_show(current_time: float) -> tuple[list[tuple[float, float, float]], bool]
+        num_drones: Number of drones to connect to
+        simulated: Whether to use simulated swarm
 
-    _swarm_controller.queue_code(code)
-    return "Code ran successfully."
+    Returns:
+        str: Result message with exit code
+    """
+    template_dir = Path(__file__).parent / "templates"
+    env = Environment(loader=FileSystemLoader(str(template_dir)))
+    template = env.get_template("swarm_show_script.py.jinja2")
+    
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    
+    script_content = template.render(
+        project_root=project_root,
+        simulated=simulated,
+        num_drones=num_drones,
+        base_address="radio://0/80/2M/E7E7E7E7E",
+        swarm_show_func=swarm_show_func
+    )
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        f.write(script_content)
+        script_path = f.name
+    
+    try:
+        process = asyncio.run(_run_script(script_path))
+        return f"Swarm show completed with exit code: {process}"
+    except Exception as e:
+        return f"Error executing swarm show: {e}"
+    finally:
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
+
+async def _run_script(script_path: str) -> int:
+    python_path = sys.executable if sys.executable else "python"
+    proc = await asyncio.create_subprocess_exec(
+        python_path, script_path,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout, stderr = await proc.communicate()
+    if stdout:
+        print(stdout.decode())
+    if stderr:
+        print(stderr.decode())
+    return proc.returncode
 
 def create_agent() -> None:
     llm = ChatOpenAI(
@@ -59,7 +93,7 @@ def create_agent() -> None:
 
     agent = create_deep_agent(
         model=llm,
-        tools=[swarm_execute],
+        tools=[swarm_show_execute],
         system_prompt=SYSTEM_PROMPT,
     )
 
@@ -89,34 +123,16 @@ async def console_loop(agent) -> None:
             print(f"LLM Error: {e}")
 
 async def main() -> None:
-    global _swarm_controller
-
     parser = argparse.ArgumentParser(description="Crazyflie Swarm LLM Console")
     parser.add_argument("--simulated", action="store_true", help="Use simulated swarm instead of hardware")
     args = parser.parse_args()
-
-    if args.simulated:
-        from simulator import SimulatedSwarm
-        swarm = SimulatedSwarm()
-    else:
-        swarm = Swarm()
-    _swarm_controller = SwarmController(swarm)
-    _swarm_controller.start_execution_task()
-
-    visualizer = SwarmVisualizer(_swarm_controller)
-    await visualizer.start()
 
     agent = create_agent()
 
     print("Crazyflie Swarm LLM Console")
     print("Type 'exit', 'quit', or 'q' to quit")
-    print(f"Initial state: {swarm.state.name}")
 
     await console_loop(agent)
-
-    if _swarm_controller is not None:
-        await _swarm_controller.shutdown()
-    await visualizer.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

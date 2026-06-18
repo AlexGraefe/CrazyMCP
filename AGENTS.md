@@ -2,8 +2,7 @@
 
 The CrazyMPC project is a demo that demonstrates how LLMs can control robot swarms. If has access to a swarm of Crazyflie quadcopters that it can control via a Pythoin API. The project is structured as follows:
 - `console_llm.py`: Main console interface for the LLM to interact with the swarm
-- `hardware/swarm_controller.py`: High-level controller that translates LLM commands into swarm API calls
-- `hardware/swarm.py`: Low-level API for direct interaction with the Crazyflie swarm
+- `hardware/swarm.py`: API for direct interaction with the Crazyflie swarm
 
 ## Code Style
 
