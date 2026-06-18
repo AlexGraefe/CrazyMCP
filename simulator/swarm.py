@@ -149,6 +149,26 @@ class SimulatedSwarm(SwarmBase):
         
         print(f"Simulated goto: {positions}")
 
+    def get_positions(self) -> list[tuple[float, float, float]] | None:
+        if not self._connected_cfs:
+            return None
+        if self._position_logger:
+            positions = []
+            for i in range(len(self._connected_cfs)):
+                log = self._position_logger.get_log(i)
+                if log:
+                    positions.append((
+                        float(log.get("stateEstimate.x", 0.0)),
+                        float(log.get("stateEstimate.y", 0.0)),
+                        float(log.get("stateEstimate.z", 0.0))
+                    ))
+                else:
+                    positions.append((0.0, 0.0, 0.0))
+            return positions
+        if self._virtual_positions:
+            return [(float(p[0]), float(p[1]), float(p[2])) for p in self._virtual_positions]
+        return None
+
     def _on_fly_task_done(self, task: asyncio.Task) -> None:
         self._fly_task = None
         if task.cancelled():

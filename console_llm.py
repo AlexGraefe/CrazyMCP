@@ -5,6 +5,7 @@ from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
 from hardware import Swarm, SwarmController
 from hardware.swarm_base import SwarmState
+from visualization import SwarmVisualizer
 
 SYSTEM_PROMPT = """You are connected to a Crazyflie drone swarm that you can control via Python code.
 
@@ -34,17 +35,24 @@ _swarm_controller: SwarmController | None = None
 
 @tool(parse_docstring=True)
 def swarm_execute(code: str) -> str:
-    """Add Python code to the execution queue for the swarm."""
+    """Add Python code to the execution queue for the swarm.
+
+    Args:
+        code (str): Python code to queue for execution.
+    
+    Returns:
+        str: Status message indicating if code was queued or error occurred.
+    """
     global _swarm_controller
     if _swarm_controller is None:
         return "Error: Swarm controller not initialized"
 
     _swarm_controller.queue_code(code)
-    return "Code queued for execution."
+    return "Code ran successfully."
 
 def create_agent() -> None:
     llm = ChatOpenAI(
-        model="Qwen/Qwen3.5-4B",
+        model="Qwen/Qwen3.6-27B",
         base_url="http://localhost:8000/v1",
         api_key="1",
     )
@@ -95,6 +103,9 @@ async def main() -> None:
     _swarm_controller = SwarmController(swarm)
     _swarm_controller.start_execution_task()
 
+    visualizer = SwarmVisualizer(_swarm_controller)
+    await visualizer.start()
+
     agent = create_agent()
 
     print("Crazyflie Swarm LLM Console")
@@ -105,6 +116,7 @@ async def main() -> None:
 
     if _swarm_controller is not None:
         await _swarm_controller.shutdown()
+    await visualizer.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())

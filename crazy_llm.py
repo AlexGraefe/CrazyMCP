@@ -25,7 +25,7 @@ def swarm_execute(code: str) -> str:
     return f"Code executed successfully."
 
 llm = ChatOpenAI(
-    model="Qwen/Qwen3.5-4B",
+    model="Qwen/Qwen3.6-27B",
     base_url="http://localhost:8000/v1",
     api_key="1"
 )

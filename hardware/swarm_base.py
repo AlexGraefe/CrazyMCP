@@ -51,3 +51,8 @@ class SwarmBase(ABC):
     def safegoto(self, positions: list) -> None:
         """Update target positions consumed by the force-field loop."""
         pass
+
+    @abstractmethod
+    def get_positions(self) -> list[tuple[float, float, float]] | None:
+        """Return current positions of all drones as (x, y, z) tuples."""
+        pass

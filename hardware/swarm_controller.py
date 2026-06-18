@@ -72,20 +72,7 @@ class SwarmController:
         return f"Navigating drones to {positions}..."
 
     def get_positions(self) -> list[tuple[float, float, float]] | None:
-        if not self._swarm._position_logger:
-            return None
-        positions = []
-        for i in range(len(self._swarm._connected_cfs)):
-            log = self._swarm._position_logger.get_log(i)
-            if log:
-                positions.append((
-                    float(log.get("stateEstimate.x", 0.0)),
-                    float(log.get("stateEstimate.y", 0.0)),
-                    float(log.get("stateEstimate.z", 0.0))
-                ))
-            else:
-                positions.append((0.0, 0.0, 0.0))
-        return positions
+        return self._swarm.get_positions()
 
     def num_drones(self) -> int:
         return len(self._swarm._connected_cfs)

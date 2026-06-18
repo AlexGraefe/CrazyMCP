@@ -91,6 +91,22 @@ class Swarm(SwarmBase):
 
     # -- Public API ----------------------------------------------------------
 
+    def get_positions(self) -> list[tuple[float, float, float]] | None:
+        if not self._position_logger:
+            return None
+        positions = []
+        for i in range(len(self._connected_cfs)):
+            log = self._position_logger.get_log(i)
+            if log:
+                positions.append((
+                    float(log.get("stateEstimate.x", 0.0)),
+                    float(log.get("stateEstimate.y", 0.0)),
+                    float(log.get("stateEstimate.z", 0.0))
+                ))
+            else:
+                positions.append((0.0, 0.0, 0.0))
+        return positions
+
     def connect(self, base_address: str, num_drones: int) -> None:
         """Start connecting to *num_drones* drones derived from *base_address*.
 
