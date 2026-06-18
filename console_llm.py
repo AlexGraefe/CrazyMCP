@@ -1,12 +1,12 @@
 import argparse
 import asyncio
 import os
-import tempfile
 from pathlib import Path
 from langchain.tools import tool
 from jinja2 import Environment, FileSystemLoader
 from deepagents import create_deep_agent
 from langchain_openai import ChatOpenAI
+import tempfile
 
 import sys
 
@@ -26,8 +26,37 @@ def swarm_show(current_time: float):
     finished = current_time > 10.0
     return setpoints, finished
 
-Use the swarm_show_execute tool to run your swarm_show function.
+Use the generate_script tool to create a script, or swarm_show_execute to run it directly.
 """
+
+@tool(parse_docstring=True)
+def generate_script(swarm_show_func: str, num_drones: int = 3, simulated: bool = True) -> str:
+    """Generate a complete swarm show script from the function code.
+
+    Args:
+        swarm_show_func: Python function code for swarm_show(current_time: float) -> tuple[list[tuple[float, float, float]], bool]
+        num_drones: Number of drones to connect to
+        simulated: Whether to use simulated swarm
+
+    Returns:
+        str: Complete script content ready for execution
+    """
+    template_dir = Path(__file__).parent / "templates"
+    env = Environment(loader=FileSystemLoader(str(template_dir)))
+    template = env.get_template("swarm_show_script.py.jinja2")
+
+    project_root = os.path.dirname(os.path.abspath(__file__))
+
+    script_content = template.render(
+        project_root=project_root,
+        simulated=simulated,
+        num_drones=num_drones,
+        base_address="radio://0/80/2M/E7E7E7E7E",
+        swarm_show_func=swarm_show_func
+    )
+
+    return script_content
+
 
 @tool(parse_docstring=True)
 def swarm_show_execute(swarm_show_func: str, num_drones: int = 3, simulated: bool = True) -> str:
@@ -84,16 +113,18 @@ async def _run_script(script_path: str) -> int:
         print(stderr.decode())
     return proc.returncode
 
-def create_agent() -> None:
+def create_agent(include_generate_script: bool = False) -> None:
     llm = ChatOpenAI(
         model="Qwen/Qwen3.6-27B",
         base_url="http://localhost:8000/v1",
         api_key="1",
     )
 
+    tools = [generate_script, swarm_show_execute] if include_generate_script else [swarm_show_execute]
+
     agent = create_deep_agent(
         model=llm,
-        tools=[swarm_show_execute],
+        tools=tools,
         system_prompt=SYSTEM_PROMPT,
     )
 

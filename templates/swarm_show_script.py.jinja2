@@ -9,12 +9,16 @@ sys.path.insert(0, "{{ project_root }}")
 import numpy as np
 from hardware import Swarm
 from simulator import SimulatedSwarm
+from visualization import SwarmVisualizer
 
 {{ swarm_show_func }}
 
 async def main():
     SwarmClass = SimulatedSwarm if {{ simulated }} else Swarm
     swarm = SwarmClass()
+    
+    visualizer = SwarmVisualizer(swarm)
+    await visualizer.start()
     
     try:
         await swarm.connect("{{ base_address }}", {{ num_drones }})
@@ -37,6 +41,7 @@ async def main():
         except Exception:
             pass
     finally:
+        await visualizer.stop()
         await swarm.disconnect()
 
 if __name__ == "__main__":
