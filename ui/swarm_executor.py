@@ -1,45 +1,9 @@
 import asyncio
-import os
 import re
-import sys
-import tempfile
-from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader
 from PyQt6.QtCore import QThread, pyqtSignal
 
-
-def generate_script(swarm_show_func: str, num_drones: int = 3, simulated: bool = True) -> str:
-    """Generate a complete swarm show script from the swarm_show function code."""
-    template_dir = Path(__file__).parent.parent / "templates"
-    env = Environment(loader=FileSystemLoader(str(template_dir)))
-    template = env.get_template("swarm_show_script.py.jinja2")
-
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    project_root = str(Path(project_root).parent)
-
-    script_content = template.render(
-        project_root=project_root,
-        simulated=simulated,
-        num_drones=num_drones,
-        base_address="radio://0/80/2M/E7E7E7E7E",
-        swarm_show_func=swarm_show_func,
-    )
-    return script_content
-
-
-async def _run_script(script_path: str) -> tuple[int, str, str]:
-    """Run a script and capture output."""
-    python_path = sys.executable if sys.executable else "python"
-    proc = await asyncio.create_subprocess_exec(
-        python_path, script_path,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    stdout_text = stdout.decode() if stdout else ""
-    stderr_text = stderr.decode() if stderr else ""
-    return proc.returncode, stdout_text, stderr_text
+from runner.swarm_runner import run_swarm_show
 
 
 class SwarmExecutor(QThread):
@@ -57,19 +21,20 @@ class SwarmExecutor(QThread):
         self._swarm_show_func: str | None = None
         self._num_drones: int = 3
         self._simulated: bool = True
-        self._script_path: str | None = None
+        self._no_wait: bool = False
 
-    def setup(self, swarm_show_func: str, num_drones: int = 3, simulated: bool = True) -> None:
+    def setup(
+        self,
+        swarm_show_func: str,
+        num_drones: int = 3,
+        simulated: bool = True,
+        no_wait: bool = False,
+    ) -> None:
         """Configure the executor with function code and options."""
         self._swarm_show_func = swarm_show_func
         self._num_drones = num_drones
         self._simulated = simulated
-
-        script_content = generate_script(swarm_show_func, num_drones, simulated)
-
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(script_content)
-            self._script_path = f.name
+        self._no_wait = no_wait
 
     def run(self) -> None:
         """Execute the script in the thread's event loop."""
@@ -79,22 +44,23 @@ class SwarmExecutor(QThread):
                 self.output_signal.emit(stdout)
             if stderr:
                 self.output_signal.emit(stderr)
-            self.finished_signal.emit(exit_code, "completed" if exit_code == 0 else "error")
+            self.finished_signal.emit(
+                exit_code, "completed" if exit_code == 0 else "error"
+            )
         except Exception as e:
             self.output_signal.emit(f"Error: {e}")
             self.finished_signal.emit(1, "error")
-        finally:
-            if self._script_path:
-                try:
-                    os.unlink(self._script_path)
-                except OSError:
-                    pass
 
     async def _execute(self) -> tuple[int, str, str]:
         """Internal async execution method."""
-        if self._script_path is None:
-            return 1, "", "No script path configured"
-        return await _run_script(self._script_path)
+        if self._swarm_show_func is None:
+            return 1, "", "No function configured"
+        return await run_swarm_show(
+            self._swarm_show_func,
+            self._num_drones,
+            self._simulated,
+            self._no_wait,
+        )
 
     @staticmethod
     def extract_swarm_show_code(response_content: str) -> str | None:

@@ -31,7 +31,11 @@ async def main():
             swarm.goto(setpoints)
             if finished:
                 break
+{% if no_wait %}
+            await asyncio.sleep(0)
+{% else %}
             await asyncio.sleep(0.1)
+{% endif %}
         
         await swarm.land()
     except Exception as e:

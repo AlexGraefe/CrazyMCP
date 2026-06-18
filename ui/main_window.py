@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -21,6 +21,8 @@ from .swarm_executor import SwarmExecutor
 class MainWindow(QMainWindow):
     """Main application window with splitter layout for chat and code panels."""
 
+    _code_received = pyqtSignal(str)
+
     def _setup_ui(self) -> None:
         """Create main UI components."""
         self.setWindowTitle("Crazyflie Swarm Control")
@@ -36,6 +38,7 @@ class MainWindow(QMainWindow):
 
         self._chat = ChatWidget()
         self._code = CodeWidget()
+        self._code_received.connect(self._code.set_code)
 
         splitter.addWidget(self._chat)
         splitter.addWidget(self._code)
@@ -83,6 +86,10 @@ class MainWindow(QMainWindow):
         self._swarm_show_code: str | None = None
         self._setup_ui()
         self._create_loading_overlay()
+
+    def set_agent(self, agent) -> None:
+        """Assign the LLM agent after the window has been created."""
+        self._agent = agent
 
     def _create_loading_overlay(self) -> None:
         """Create a semi‑transparent overlay with a loading indicator."""
@@ -173,17 +180,26 @@ class MainWindow(QMainWindow):
                 version="v3",
             )
             full_text = ""
-            for message in getattr(stream, "messages", []):
-                for token in getattr(message, "reasoning", []):
+            for message in stream.messages:
+                for token in message.reasoning:
                     self._chat.append_output(f"[thinking] {token}")
                     QApplication.processEvents()
-                for token in getattr(message, "text", []):
+                for token in message.text:
                     self._chat.append_output(token)
                     full_text += token
                     QApplication.processEvents()
+                for tool_call in message.tool_calls:
+                    if tool_call and isinstance(tool_call, dict):
+                        if tool_call.get("type") == "tool_call":
+                            name = tool_call.get("name", "")
+                            if name == "swarm_show_execute":
+                                args = tool_call.get("args", {})
+                                swarm_show_func = args.get("swarm_show_func", "")
+                                if swarm_show_func:
+                                    self._swarm_show_code = swarm_show_func
+                                    self._code.set_code(swarm_show_func)
             if full_text:
-                response = {"messages": [{"content": full_text}]}
-                self._handle_llm_response(response)
+                self._chat.append_llm_message(full_text)
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -218,6 +234,11 @@ class MainWindow(QMainWindow):
                     self._code.set_code(code)
 
         self._set_buttons_enabled(True)
+
+    def set_swarm_show_code(self, code: str) -> None:
+        """Receive code from a tool call and update the code widget."""
+        self._swarm_show_code = code
+        self._code_received.emit(code)
 
     def _on_simulate(self) -> None:
         """Handle simulate button click."""

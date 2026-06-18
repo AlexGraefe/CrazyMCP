@@ -6,113 +6,100 @@ The UI does not work as specified. After sending a prompt, the LLM correctly cal
 2. Clicking the "Simulate" button shows an error "code is not available"
 
 ## Root Cause Analysis
-The current architecture has two separate execution paths:
-1. **Console LLM path** (`console_llm.py`): `swarm_show_execute` tool generates and runs a subprocess, returning execution result
-2. **UI path** (`ui/main_window.py`): LLM response is parsed to extract `swarm_show` code, which is then passed to `SwarmExecutor`
-
-The tool call happens in a subprocess context, so the code never reaches the UI. The UI tries to extract code from LLM response after the fact, but the timing/state management is broken.
+The `swarm_show_execute` tool in `console_llm.py` generates and executes a script in a subprocess, returning only execution result. The UI has no visibility into tool calls because `stream_events` only iterates over messages, not tool invocation events. The stored `_swarm_show_code` is never properly set when tools are used.
 
 ## Solution Architecture
 
-### 1. Create Unified Swarm Runner (`runner/swarm_runner.py`)
-A clean wrapper module that encapsulates:
-- Script generation from `swarm_show` function code
-- Execution of generated scripts with configurable options
+### Core Concept
+Create a tool that:
+1. Receives code via `swarm_show_func` argument
+2. Immediately passes code to UI window (via callback/window reference)
+3. Runs simulation with `no_wait=True` for fast preview
+4. Uses unified runner for both tool calls and button clicks
 
+### 1. Create `runner/swarm_runner.py` - Unified Runner Module
 ```python
-# runner/swarm_runner.py
+def generate_script(swarm_show_func: str, num_drones: int = 3, simulated: bool = True, no_wait: bool = False) -> str:
+    """Generate script content from swarm_show function code."""
+
 async def run_swarm_show(
-    swarm_show_func: str, 
-    num_drones: int = 3, 
-    simulated: bool = True, 
+    swarm_show_func: str,
+    num_drones: int = 3,
+    simulated: bool = True,
     no_wait: bool = False
 ) -> tuple[int, str, str]:
-    """Execute swarm_show function, returning (exit_code, stdout, stderr).
-    
-    Args:
-        swarm_show_func: The swarm_show function code
-        num_drones: Number of drones to control
-        simulated: Use simulated vs hardware swarm
-        no_wait: If True, skip delays for fast execution (useful for previews)
-    """
+    """Generate and execute script, returning (exit_code, stdout, stderr)."""
 ```
 
-### 2. Create Swarm Executor Window Wrapper (`ui/swarm_window.py`)
-A class that wraps swarm execution for the UI context:
-- Holds the current `swarm_show` code
-- Provides methods `execute(simulated=True)` and `execute(simulated=False)`
-- Used by both UI buttons (Simulate/Fly) and the tool call
+### 2. Update `templates/swarm_show_script.py.jinja2`
+Add `no_wait` flag - when true, uses `asyncio.sleep(0)` for instant execution:
+```jinja2
+{%- if no_wait -%}
+await asyncio.sleep(0)
+{%- else -%}
+await asyncio.sleep(0.1)
+{%- endif -%}
+```
 
-### 3. Update Jinja2 Template (`templates/swarm_show_script.py.jinja2`)
-- Add `no_wait` flag
-- When `no_wait=True`: use `asyncio.sleep(0)` instead of `asyncio.sleep(0.1)` for fast execution
-- Remove unnecessary delays in simulated mode
+### 3. Create `ui/swarm_tool.py` - UI-Aware Tool
+A tool factory that creates a tool with window reference:
+```python
+def create_swarm_tool(window: MainWindow | None = None) -> Callable:
+    """Create swarm_show_execute tool bound to a window."""
+    @tool(parse_docstring=True)
+    def swarm_show_execute(swarm_show_func: str, num_drones: int = 3, simulated: bool = True, no_wait: bool = True) -> str:
+        if window:
+            window.set_swarm_show_code(swarm_show_func)
+        exit_code, stdout, stderr = asyncio.run(run_swarm_show(swarm_show_func, num_drones, simulated, no_wait))
+        return f"Exit code: {exit_code}\n{stdout}\n{stderr}".strip()
+    return swarm_show_execute
+```
 
-### 4. Replace Tool in `console_llm.py`
-- Remove `generate_script` tool (no longer needed)
-- Update `swarm_show_execute` to:
-  - Accept `no_wait` parameter (default False)
-  - Use the unified runner
-  - Still run subprocess and return result
-  - The UI tool should directly pass code to the window (handled by agent setup)
+### 4. Update `ui/main_window.py` - Add `set_swarm_show_code` method
+```python
+def set_swarm_show_code(self, code: str) -> None:
+    """Receive code from tool call and update UI."""
+    self._swarm_show_code = code
+    self._code.set_code(code)
+```
 
-### 5. Update UI (`ui/main_window.py`)
-- Create `SwarmWindow` wrapper at initialization
-- Pass `_swarm_show_code` to tool calls (for LLM to preview)
-- On tool invocation: update stored code and set it in code widget
-- Use runner for simulate/fly button execution
+### 5. Update `ui/main.py` - Use UI-aware tool creation
+```python
+from ui.swarm_tool import create_swarm_tool
+agent = create_agent(include_generate_script=False)
+agent.tools = [create_swarm_tool(window)]  # Pass window after creation
+```
 
-### 6. Clean Up
-- Remove `SwarmExecutor.extract_swarm_show_code` (delegated to runner or kept for fallback)
-- Consolidate script generation logic into single location
-- Ensure both simulated and real modes use the same execution path
+### 6. Delete `console_llm.py` - Console Interface No Longer Needed
+
+### 7. Simplify `ui/swarm_executor.py`
+Remove `generate_script`, import from runner module.
 
 ## Implementation Steps
 
-### Step 1: Create `runner/swarm_runner.py`
-- Move `generate_script` function from `ui/swarm_executor.py` and `console_llm.py` into this module
-- Create async `run_swarm_show()` function that handles both simulation and execution
-- Add `no_wait` flag support in template rendering
+1. **Create `runner/swarm_runner.py`**
+   - Move `generate_script` logic, add `run_swarm_show`
 
-### Step 2: Update `templates/swarm_show_script.py.jinja2`
-- Add `no_wait` variable
-- Conditional sleep: `{{ asyncio.sleep(0 if no_wait else 0.1) }}`
+2. **Update `templates/swarm_show_script.py.jinja2`**
+   - Add `no_wait` variable, conditional sleep
 
-### Step 3: Create `ui/swarm_window.py`
-- `SwarmWindow` class that holds code and swarm state
-- `set_code(code: str)` - store the swarm_show function
-- `execute(simulated: bool, no_wait: bool = False)` - run the stored code
-- `get_code() -> str` - retrieve stored code
+3. **Create `ui/swarm_tool.py`**
+   - Tool factory with window callback
 
-### Step 4: Update `ui/swarm_executor.py`
-- Remove code extraction logic (keep in SwarmWindow or move to runner)
-- Simplify to just run the script file using runner module
-- Remove duplicate `generate_script` function
+4. **Update `ui/main_window.py`**
+   - Add `set_swarm_show_code` method
 
-### Step 5: Update `console_llm.py`
-- Remove `generate_script` tool
-- Update `swarm_show_execute` to use runner module
-- Add `no_wait` parameter
+5. **Update `ui/main.py`**
+   - Use `create_swarm_tool` with window reference
 
-### Step 6: Update `ui/main_window.py`
-- Initialize `SwarmWindow` with runner reference
-- On LLM response: store code in `SwarmWindow` and display in code widget
-- Simulate/Fly buttons call `SwarmWindow.execute()` directly
+6. **Delete `console_llm.py`**
 
-## File Changes Summary
-
-| File | Action |
-|------|--------|
-| `runner/swarm_runner.py` | Create new unified runner module |
-| `ui/swarm_window.py` | Create new window wrapper class |
-| `templates/swarm_show_script.py.jinja2` | Add `no_wait` flag |
-| `ui/swarm_executor.py` | Simplify, use runner |
-| `console_llm.py` | Remove `generate_script`, use runner |
-| `ui/main_window.py` | Integrate SwarmWindow, fix code display |
+7. **Update `ui/__init__.py`** and `ui/swarm_executor.py`**
+   - Use runner module
 
 ## Testing
 1. Run UI with simulated mode
-2. Send LLM prompt requesting swarm_show code
-3. Verify code appears in code widget
+2. Send LLM prompt - verify code appears in widget immediately
+3. Verify tool execution with `no_wait=True` is fast
 4. Click Simulate button - verify no error
 5. Verify output appears in chat

@@ -1,16 +1,14 @@
-import asyncio
 import sys
 
 from PyQt6.QtWidgets import QApplication
 
-from console_llm import create_agent
+from agent import create_agent
 from ui.main_window import MainWindow
+from ui.swarm_tool import create_swarm_tool
 
 
 def run() -> None:
     """Entry point for the PyQt6 swarm control UI."""
-    agent = create_agent()
-
     app = QApplication(sys.argv)
     app.setStyleSheet("""
         QWidget {
@@ -19,8 +17,11 @@ def run() -> None:
         }
     """)
 
-    window = MainWindow(agent=agent)
+    window = MainWindow()
     window.show()
+
+    agent = create_agent(tools=[create_swarm_tool(window)])
+    window.set_agent(agent)
 
     sys.exit(app.exec())
 
