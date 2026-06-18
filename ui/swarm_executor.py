@@ -98,27 +98,34 @@ class SwarmExecutor(QThread):
 
     @staticmethod
     def extract_swarm_show_code(response_content: str) -> str | None:
-        """Extract the swarm_show function code from LLM response.
+        """Extract the ``swarm_show`` function code from the LLM response.
 
-        Args:
-            response_content: The raw response content from the LLM
-
-        Returns:
-            The extracted function code, or None if not found
+        Handles responses that may include markdown code fences (```python) and
+        extracts the function definition with its body.
         """
-        lines = response_content.split("\n")
+        # Remove surrounding markdown fences if present
+        content = response_content.strip()
+        if content.startswith("```"):
+            # Find the first newline after the opening fence
+            first_newline = content.find("\n")
+            if first_newline != -1:
+                content = content[first_newline + 1 :]
+            # Remove trailing fence
+            if content.rstrip().endswith("```"):
+                content = content.rstrip()[: -3]
+        lines = content.split("\n")
         start_idx = None
         end_idx = None
-
         for i, line in enumerate(lines):
             if re.match(r"\s*def\s+swarm_show\s*\(", line):
                 start_idx = i
-            elif start_idx is not None:
+                continue
+            if start_idx is not None:
+                # End of function when a non-indented line appears (ignoring empty lines)
                 if line.strip() and not line.startswith(" " * 4) and not line.startswith("\t"):
                     end_idx = i
                     break
-
         if start_idx is not None:
-            end_idx = end_idx if end_idx else len(lines)
+            end_idx = end_idx if end_idx is not None else len(lines)
             return "\n".join(lines[start_idx:end_idx]).strip()
         return None

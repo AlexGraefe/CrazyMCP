@@ -62,7 +62,7 @@ class ChatWidget(QWidget):
         self._append_text(f"LLM [{timestamp}]: {message}")
 
     def append_llm_thinking(self) -> None:
-        """Show thinking indicator."""
+        """Show thinking indicator (initial placeholder)."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         self._append_text(f"LLM [{timestamp}]: Thinking...")
 
@@ -78,7 +78,7 @@ class ChatWidget(QWidget):
     def _append_text(self, text: str) -> None:
         """Append text and scroll to bottom."""
         self._history.moveCursor(QTextCursor.MoveOperation.End)
-        self._history.insertPlainText(text + "\n")
+        self._history.insertPlainText(text)
         self._history.moveCursor(QTextCursor.MoveOperation.End)
 
     def get_prompt(self) -> str:

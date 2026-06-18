@@ -1,5 +1,6 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QWidget,
     QSplitter,
@@ -7,6 +8,9 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QStatusBar,
     QMessageBox,
+    QVBoxLayout,
+    QLabel,
+    QProgressBar,
 )
 
 from .chat_widget import ChatWidget
@@ -17,14 +21,8 @@ from .swarm_executor import SwarmExecutor
 class MainWindow(QMainWindow):
     """Main application window with splitter layout for chat and code panels."""
 
-    def __init__(self, agent=None, parent=None):
-        super().__init__(parent)
-        self._agent = agent
-        self._executor: SwarmExecutor | None = None
-        self._swarm_show_code: str | None = None
-        self._setup_ui()
-
     def _setup_ui(self) -> None:
+        """Create main UI components."""
         self.setWindowTitle("Crazyflie Swarm Control")
         self.resize(1000, 600)
 
@@ -78,6 +76,52 @@ class MainWindow(QMainWindow):
         self._chat._input.returnPressed.disconnect()
         self._chat._input.returnPressed.connect(self._on_prompt)
 
+    def __init__(self, agent=None, parent=None):
+        super().__init__(parent)
+        self._agent = agent
+        self._executor: SwarmExecutor | None = None
+        self._swarm_show_code: str | None = None
+        self._setup_ui()
+        self._create_loading_overlay()
+
+    def _create_loading_overlay(self) -> None:
+        """Create a semi‑transparent overlay with a loading indicator."""
+        overlay = QWidget(self)
+        overlay.setObjectName("loadingOverlay")
+        overlay.setStyleSheet("""
+            QWidget#loadingOverlay {
+                background-color: rgba(0, 0, 0, 120);
+            }
+        """)
+        overlay.setGeometry(self.rect())
+        overlay.setVisible(False)
+
+        layout = QVBoxLayout(overlay)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        loading_label = QLabel("LLM is thinking...")
+        loading_label.setStyleSheet("color: #ffffff; font-size: 16px;")
+        layout.addWidget(loading_label)
+
+        self._loading_overlay = overlay
+        # Ensure overlay is on top of other widgets
+        overlay.raise_()
+        # Ensure overlay resizes with window
+        self.resizeEvent = self._on_resize
+
+    def _on_resize(self, event) -> None:  # type: ignore[override]
+        if hasattr(self, "_loading_overlay") and self._loading_overlay:
+            self._loading_overlay.setGeometry(self.rect())
+        super().resizeEvent(event)
+
+    def _show_loading(self, show: bool) -> None:
+        """Show or hide the loading overlay."""
+        if hasattr(self, "_loading_overlay") and self._loading_overlay:
+            self._loading_overlay.setVisible(show)
+            if show:
+                QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            else:
+                QApplication.restoreOverrideCursor()
     def _button_style(self) -> str:
         return """
             QPushButton {
@@ -107,19 +151,44 @@ class MainWindow(QMainWindow):
         self._chat.clear_input()
         self._chat.append_llm_thinking()
         self._set_buttons_enabled(False)
+        # Force UI update so loading overlay becomes visible before blocking call
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
 
         self._run_llm(prompt)
 
     def _run_llm(self, prompt: str) -> None:
-        """Run LLM in a thread and handle response."""
+        """Run LLM with streaming and handle response live."""
         import asyncio
+        from PyQt6.QtWidgets import QApplication
+
+        async def _stream():
+            """Stream events from the agent and update UI token‑by‑token."""
+            if self._agent is None:
+                self._chat.append_system_message("No agent configured")
+                return
+
+            stream = self._agent.stream_events(
+                {"messages": [{"role": "user", "content": prompt}]},
+                version="v3",
+            )
+            full_text = ""
+            for message in getattr(stream, "messages", []):
+                for token in getattr(message, "reasoning", []):
+                    self._chat.append_output(f"[thinking] {token}")
+                    QApplication.processEvents()
+                for token in getattr(message, "text", []):
+                    self._chat.append_output(token)
+                    full_text += token
+                    QApplication.processEvents()
+            if full_text:
+                response = {"messages": [{"content": full_text}]}
+                self._handle_llm_response(response)
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-
         try:
-            response = loop.run_until_complete(self._invoke_agent(prompt))
-            self._handle_llm_response(response)
+            loop.run_until_complete(_stream())
         except Exception as e:
             self._chat.append_system_message(f"Error: {e}")
         finally:
@@ -200,3 +269,5 @@ class MainWindow(QMainWindow):
         """Enable/disable buttons during execution."""
         self._simulate_button.setEnabled(enabled)
         self._fly_button.setEnabled(enabled)
+        # Update loading overlay visibility
+        self._show_loading(not enabled)
