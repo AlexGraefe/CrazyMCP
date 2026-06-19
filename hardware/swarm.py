@@ -203,6 +203,7 @@ class Swarm(SwarmBase):
     async def _land_impl(self) -> None:
         """Redirect FF loop toward pads, wait until there, stop loop, land."""
         try:
+            print(f"landing: redirecting toward pad positions...: {self._pad_positions}")
             if self._pad_positions:
                 # Point the running FF loop toward above-pad positions.
                 self._target_positions = [
@@ -214,14 +215,38 @@ class Swarm(SwarmBase):
             # Stop the FF loop before issuing the firmware land command.
             await self._cancel_ff_loop()
 
+            for i, cf in enumerate(self._connected_cfs):
+                param = cf.param()
+                param.set("stabilizer.controller", 2)
+            await asyncio.sleep(0.5)
+
+            await asyncio.gather(
+                *[
+                    self._connected_cfs[i].high_level_commander().go_to(
+                        x,
+                        y,
+                        z + 1.0,
+                        0.0,
+                        2.0,
+                        relative=False,
+                        linear=True,
+                        group_mask=None,
+                    )
+                    for i, (x, y, z) in enumerate(self._pad_positions)
+                ],
+                return_exceptions=True,
+            )
+
+            await asyncio.sleep(2.0 + 0.5)
+
             print("Landing drones...")
             await asyncio.gather(
                 *[
-                    cf.high_level_commander().land(0.0, None, 2.0, None)
+                    cf.high_level_commander().land(0.0, None, 4.0, None)
                     for cf in self._connected_cfs
                 ]
             )
-            await asyncio.sleep(2.0 + 0.5)
+            await asyncio.sleep(4.0 + 0.5)
 
             await asyncio.sleep(1.0)
             await asyncio.gather(
@@ -361,17 +386,18 @@ class Swarm(SwarmBase):
         latest live positions are polled for the GUI.
         """
         # Initialise controller with current virtual and target positions.
-        controller = ForceFieldController(self._virtual_positions, self._target_positions)
+        controller = ForceFieldController(self._virtual_positions)
         steps = 0
         try:
             while True:
+                print(f"FF loop: step {steps}, virtual positions: {self._virtual_positions}, targets: {self._target_positions}")
                 n = len(self._connected_cfs)
                 if not self._virtual_positions or len(self._virtual_positions) != n:
                     await asyncio.sleep(FF_VIRTUAL_UPDATE_INTERVAL)
                     continue
 
                 # Advance virtual positions via the controller.
-                next_positions = controller.step()
+                next_positions = controller.step(self._target_positions)
                 # Keep Swarm's attribute in sync for external access.
                 self._virtual_positions = next_positions
 
@@ -400,8 +426,9 @@ class Swarm(SwarmBase):
                             return_exceptions=True,
                         )
 
-                await asyncio.sleep(FF_VIRTUAL_UPDATE_INTERVAL)
+                    await asyncio.sleep(FF_WAYPOINT_INTERVAL)
         except asyncio.CancelledError:
+            print("Force-field loop cancelled.")
             pass
 
     async def _cancel_ff_loop(self) -> None:

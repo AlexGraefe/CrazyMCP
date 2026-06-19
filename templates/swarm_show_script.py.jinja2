@@ -37,6 +37,7 @@ async def main():
             # await asyncio.sleep(0)
 {% else %}
             await asyncio.sleep(0.1)
+            print(f"Time: {elapsed:.2f}s, Setpoints: {setpoints}, Finished: {finished}")
 {% endif %}
         
         await swarm.land()

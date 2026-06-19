@@ -35,7 +35,7 @@ def generate_script(
         project_root=project_root,
         simulated=simulated,
         num_drones=num_drones,
-        base_address="radio://0/80/2M/E7E7E7E7E",
+        base_address="radio://0/84/2M/D91F7001",
         swarm_show_func=swarm_show_func,
         no_wait=no_wait,
         visualize=visualize,
@@ -55,6 +55,7 @@ async def _run_script(script_path: str) -> tuple[int, str, str]:
     stdout, stderr = await proc.communicate()
     stdout_text = stdout.decode() if stdout else ""
     stderr_text = stderr.decode() if stderr else ""
+    print(f"Script output:\n{stdout_text}\n{stderr_text}")
     return proc.returncode, stdout_text, stderr_text
 
 
@@ -70,7 +71,7 @@ async def run_swarm_show(
         swarm_show_func: Python function code for swarm_show(current_time: float).
         num_drones: Number of drones to connect to.
         simulated: Whether to use simulated swarm.
-        no_wait: When true, use instant sleep for fast preview.
+        no_wait: When true, use instant sradio://0/80/2M/E7E7E7E7E sleep for fast preview.
 
     Returns:
         Tuple of (exit_code, stdout, stderr).
