@@ -29,8 +29,8 @@ async def main():
         start_time = asyncio.get_running_loop().time()
         while True:
             elapsed = asyncio.get_running_loop().time() - start_time
-            setpoints, finished = swarm_show(elapsed)
-            swarm.goto(setpoints)
+            setpoints, yaws, finished = swarm_show(elapsed)
+            swarm.goto(setpoints, yaws)
             if finished:
                 break
 {% if no_wait %}

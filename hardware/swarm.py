@@ -76,6 +76,7 @@ class Swarm(SwarmBase):
         self._pad_positions: list[tuple[float, float, float]] = []
         self._virtual_positions: list[np.ndarray] = []
         self._target_positions: list[np.ndarray | None] = []
+        self._target_yaws: list[float] = []
 
     # -- State ---------------------------------------------------------------
 
@@ -351,11 +352,12 @@ class Swarm(SwarmBase):
             if self._position_logger:
                 await self._position_logger.stop()
 
-    def safegoto(self, positions: list) -> None:
+    def safegoto(self, positions: list, yaws: list | None = None) -> None:
         """Update target positions consumed by the force-field loop.
 
         *positions* is a list of ``(x, y, z)`` tuples (or ``None`` to keep a
         drone at its current virtual position), one entry per connected drone.
+        *yaws* is an optional list of yaw angles in radians, one per drone.
         Returns immediately; the background loop will navigate toward the new
         targets continuously.  Ignored if not currently flying.
         
@@ -363,18 +365,22 @@ class Swarm(SwarmBase):
         """
         if self._state != SwarmState.FLYING:
             return
+        n = len(self._connected_cfs)
+        if yaws is not None:
+            self._target_yaws = [float(yaws[i]) if i < len(yaws) else 0.0 for i in range(n)]
+        else:
+            self._target_yaws = [0.0] * n
         # Scale LLM normalized coordinates to real-world coordinates
         scaled_positions = [scale_setpoint(*p) if p is not None else None for p in positions]
-        n = len(self._connected_cfs)
         self._target_positions = [
             np.array(scaled_positions[i], dtype=float) if i < len(scaled_positions) and scaled_positions[i] is not None
             else (self._virtual_positions[i].copy() if i < len(self._virtual_positions) else None)
             for i in range(n)
         ]
 
-    def goto(self, positions: list) -> None:
+    def goto(self, positions: list, yaws: list | None = None) -> None:
         """Alias for safegoto - update target positions using simpler name."""
-        return self.safegoto(positions)
+        return self.safegoto(positions, yaws)
 
     # -- Force-field background loop -----------------------------------------
 
@@ -415,7 +421,7 @@ class Swarm(SwarmBase):
                                     float(next_positions[i][0]),
                                     float(next_positions[i][1]),
                                     float(next_positions[i][2]),
-                                    0.0,
+                                    self._target_yaws[i] if i < len(self._target_yaws) else 0.0,
                                     FF_WAYPOINT_INTERVAL,
                                     relative=False,
                                     linear=True,
@@ -465,6 +471,9 @@ class Swarm(SwarmBase):
         for cf in self._connected_cfs:
             param = cf.param()
             param.set("colorLedBot.wrgb8888", 0x00000000)
+        
+        await asyncio.sleep(0.5)
+
         await asyncio.gather(
             *[cf.disconnect() for cf in self._connected_cfs],
             return_exceptions=True,

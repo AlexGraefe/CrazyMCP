@@ -8,11 +8,13 @@ from runner.swarm_runner import run_swarm_show
 
 SYSTEM_PROMPT = """You control a Crazyflie drone swarm consisting of 3 drones. Write a function `swarm_show(current_time: float)` that returns:
 - A list of (x, y, z) setpoints for each drone as tuples
+- A list of yaw angles in radians, one per drone
 - A boolean indicating if the show is finished
 
-Try to make the make the show interesting by avoiding returning the same setpoints repeatedly. 
 You do not need to worry about drone collisions or safety, just focus on creating an interesting show.
 The drones also are already launched and will land automatically, you do not need to include takeoff or landing logic in your function.
+Whenever the user gives a "dynamic" command, like "fly", avoid returning the same setpoints repeatedly. If the user gives a "static" command, like "form" you are allowed to return the same setpoints repeatedly.
+If a user does not specify the time, try to make the show 1 min long.
 
 The function receives elapsed time in seconds since takeoff. Return positions for all connected drones.
 Return (setpoints, False) to continue the show, (setpoints, True) to end and land.
@@ -26,9 +28,10 @@ def swarm_show(current_time: float):
     import math
     x = 0.5 * math.cos(current_time)
     y = 0.5 * math.sin(current_time)
+    yaws = [math.sin(current_time * 0.5), -math.sin(current_time * 0.5), 0.0]  # yaw per drone
     setpoints = [(x, y, 1.0), (-x, -y, 1.0), (0, 0, 1.0)]
     finished = current_time > 10.0
-    return setpoints, finished
+    return setpoints, yaws, finished
 
 Use the swarm_show_execute tool to run the show.
 """

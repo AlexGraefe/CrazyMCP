@@ -69,7 +69,7 @@ class SwarmBase(ABC):
         pass
 
     @abstractmethod
-    def safegoto(self, positions: list) -> None:
+    def safegoto(self, positions: list, yaws: list | None = None) -> None:
         """Update target positions consumed by the force-field loop."""
         pass
 
@@ -78,6 +78,6 @@ class SwarmBase(ABC):
         """Return current positions of all drones as (x, y, z) tuples."""
         pass
 
-    def goto(self, positions: list) -> None:
+    def goto(self, positions: list, yaws: list | None = None) -> None:
         """Alias for safegoto - update target positions."""
-        return self.safegoto(positions)
+        return self.safegoto(positions, yaws)
