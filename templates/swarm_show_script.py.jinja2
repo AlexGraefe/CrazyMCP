@@ -16,9 +16,11 @@ from visualization import SwarmVisualizer
 async def main():
     SwarmClass = SimulatedSwarm if {{ simulated }} else Swarm
     swarm = SwarmClass()
-    
+
+{% if visualize %}
     visualizer = SwarmVisualizer(swarm)
     await visualizer.start()
+{% endif %}
     
     try:
         await swarm.connect("{{ base_address }}", {{ num_drones }})
@@ -32,7 +34,7 @@ async def main():
             if finished:
                 break
 {% if no_wait %}
-            await asyncio.sleep(0)
+            # await asyncio.sleep(0)
 {% else %}
             await asyncio.sleep(0.1)
 {% endif %}
@@ -45,7 +47,9 @@ async def main():
         except Exception:
             pass
     finally:
+{% if visualize %}
         await visualizer.stop()
+{% endif %}
         await swarm.disconnect()
 
 if __name__ == "__main__":

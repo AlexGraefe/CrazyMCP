@@ -12,6 +12,7 @@ def generate_script(
     num_drones: int = 3,
     simulated: bool = True,
     no_wait: bool = False,
+    visualize: bool = False,
 ) -> str:
     """Generate a complete swarm show script from the function code.
 
@@ -37,6 +38,7 @@ def generate_script(
         base_address="radio://0/80/2M/E7E7E7E7E",
         swarm_show_func=swarm_show_func,
         no_wait=no_wait,
+        visualize=visualize,
     )
     return script_content
 
