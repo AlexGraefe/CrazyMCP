@@ -22,11 +22,10 @@ class ForceFieldController:
     virtual model one update interval and returns the new virtual positions.
     """
 
-    def __init__(self, virtual_positions: list[np.ndarray], target_positions: list[np.ndarray | None]):
+    def __init__(self, virtual_positions: list[np.ndarray]):
         self._virtual_positions = virtual_positions
-        self._target_positions = target_positions
 
-    def step(self) -> list[np.ndarray]:
+    def step(self, target_positions) -> list[np.ndarray]:
         """Compute the next virtual positions using the force‑field model.
 
         Returns the updated list of virtual positions.  The internal state is
@@ -38,7 +37,8 @@ class ForceFieldController:
 
         next_positions = list(self._virtual_positions)
         for i in range(n):
-            target = self._target_positions[i] if i < len(self._target_positions) else None
+            target = target_positions[i] if i < len(target_positions) else None
+            # print(f"Controller step: Drone {i}, Current: {self._virtual_positions[i]}, Target: {target}")
             if target is None:
                 continue
             others = [self._virtual_positions[j] for j in range(n) if j != i]

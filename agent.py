@@ -6,9 +6,13 @@ from langchain_openai import ChatOpenAI
 from runner.swarm_runner import run_swarm_show
 
 
-SYSTEM_PROMPT = """You control a Crazyflie drone swarm. Write a function `swarm_show(current_time: float)` that returns:
+SYSTEM_PROMPT = """You control a Crazyflie drone swarm consisting of 3 drones. Write a function `swarm_show(current_time: float)` that returns:
 - A list of (x, y, z) setpoints for each drone as tuples
 - A boolean indicating if the show is finished
+
+Try to make the make the show interesting by avoiding returning the same setpoints repeatedly. 
+You do not need to worry about drone collisions or safety, just focus on creating an interesting show.
+The drones also are already launched and will land automatically, you do not need to include takeoff or landing logic in your function.
 
 The function receives elapsed time in seconds since takeoff. Return positions for all connected drones.
 Return (setpoints, False) to continue the show, (setpoints, True) to end and land.

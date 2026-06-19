@@ -146,7 +146,7 @@ class SimulatedSwarm(SwarmBase):
                 [(float(p[0]), float(p[1]), float(p[2])) for p in self._virtual_positions]
             )
         
-        print(f"Simulated goto: {positions}")
+        # print(f"Simulated goto: {positions}")
 
     def get_positions(self) -> list[tuple[float, float, float]] | None:
         if not self._connected_cfs:
