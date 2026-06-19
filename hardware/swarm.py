@@ -202,7 +202,7 @@ class Swarm(SwarmBase):
         await self._land_impl()
 
     async def _land_impl(self) -> None:
-        """Redirect FF loop toward pads, wait until there, stop loop, land."""
+        """Redirect FF loop toward pads, wait until there, stop loop, land with retry."""
         try:
             print(f"landing: redirecting toward pad positions...: {self._pad_positions}")
             if self._pad_positions:
@@ -241,23 +241,71 @@ class Swarm(SwarmBase):
             await asyncio.sleep(2.0 + 0.5)
 
             print("Landing drones...")
+            retry_indices = list(range(len(self._connected_cfs)))
+            for attempt in range(3):
+                for index in retry_indices:
+                    cf = self._connected_cfs[index]
+                    await cf.high_level_commander().land(0.0, None, 4.0, None)
+                await asyncio.sleep(4.0 + 0.5)
+
+                await asyncio.sleep(1.0)
+
+                retry_indices = await self._not_charging_indices(retry_indices)
+                print(f"Land attempt {attempt + 1}, non-charging drones: {retry_indices}")
+                if not retry_indices or attempt >= 2:
+                    break
+
+                print(f"Retrying landing for non-charging drones: {retry_indices}")
+                await asyncio.gather(
+                    *[
+                        self._connected_cfs[index].platform().send_arming_request(True)
+                        for index in retry_indices
+                    ]
+                )
+                await asyncio.sleep(1.0)
+                await asyncio.gather(
+                    *[
+                        self._connected_cfs[index].high_level_commander().take_off(
+                            TAKEOFF_HEIGHT, None, TAKEOFF_DURATION, None
+                        )
+                        for index in retry_indices
+                    ]
+                )
+                await asyncio.sleep(TAKEOFF_DURATION + 0.5)
+
+                if self._pad_positions:
+                    await asyncio.gather(
+                        *[
+                            self._connected_cfs[index].high_level_commander().go_to(
+                                self._pad_positions[index][0],
+                                self._pad_positions[index][1],
+                                self._pad_positions[index][2] + 1.0,
+                                0.0,
+                                3.0,
+                                relative=False,
+                                linear=True,
+                                group_mask=None,
+                            )
+                            for index in retry_indices
+                        ],
+                        return_exceptions=True,
+                    )
+            await asyncio.sleep(3.0 + 0.5)
             await asyncio.gather(
                 *[
-                    cf.high_level_commander().land(0.0, None, 4.0, None)
-                    for cf in self._connected_cfs
-                ]
+                    self._connected_cfs[index].high_level_commander().stop(None)
+                    for index in retry_indices
+                ],
+                return_exceptions=True,
             )
-            await asyncio.sleep(4.0 + 0.5)
+            await asyncio.gather(
+                *[
+                    self._connected_cfs[index].platform().send_arming_request(False)
+                    for index in retry_indices
+                ],
+                return_exceptions=True,
+            )
 
-            await asyncio.sleep(1.0)
-            await asyncio.gather(
-                *[cf.high_level_commander().stop(None) for cf in self._connected_cfs],
-                return_exceptions=True,
-            )
-            await asyncio.gather(
-                *[cf.platform().send_arming_request(False) for cf in self._connected_cfs],
-                return_exceptions=True,
-            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -267,6 +315,29 @@ class Swarm(SwarmBase):
             if self._position_logger:
                 await self._position_logger.stop()
         self._set_state(SwarmState.CONNECTED)
+
+    @staticmethod
+    async def _read_power_state(cf: object) -> int:
+        log = cf.log()
+        block = await log.create_block()
+        await block.add_variable("pm.state")
+        log_stream = await block.start(LOG_INTERVAL)
+        try:
+            values = (await log_stream.next()).data
+            return int(values["pm.state"])
+        finally:
+            await log_stream.stop()
+
+    async def _not_charging_indices(self, indices: list[int]) -> list[int]:
+        power_states = await asyncio.gather(
+            *[self._read_power_state(self._connected_cfs[index]) for index in indices],
+            return_exceptions=True,
+        )
+        return [
+            index
+            for index, state in zip(indices, power_states, strict=False)
+            if isinstance(state, Exception) or state != 1
+        ]
 
     async def takeoff(self) -> None:
         """Arm all connected drones, take off, and start the force-field loop.
