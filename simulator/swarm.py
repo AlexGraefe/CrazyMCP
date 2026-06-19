@@ -58,9 +58,9 @@ class SimulatedSwarm(SwarmBase):
 
     # -- Public API ----------------------------------------------------------
 
-    async def connect(self, base_address: str, num_drones: int) -> None:
+    async def connect(self, base_address: str, num_drones: int, address_offset: int = 0) -> None:
         """Immediately transition to CONNECTED state."""
-        self._connected_uris = [f"{base_address}{index:02X}" for index in range(1, num_drones + 1)]
+        self._connected_uris = [f"{base_address}{index:02X}" for index in range(1 + address_offset, num_drones + 1 + address_offset)]
         self._connected_cfs = [f"drone_{i}" for i in range(num_drones)]
         print(f"Simulated connect to {num_drones} drone(s): {', '.join(self._connected_uris)}")
         self._set_state(SwarmState.CONNECTED)

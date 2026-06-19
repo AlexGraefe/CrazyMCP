@@ -122,9 +122,10 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self._status)
         self._status.showMessage("Ready")
 
-    def __init__(self, agent=None, parent=None):
+    def __init__(self, agent=None, address_offset: int = 0, parent=None):
         super().__init__(parent)
         self._agent = agent
+        self._address_offset: int = address_offset
         self._executor: SwarmExecutor | None = None
         self._swarm_show_code: str | None = None
         self._setup_ui()
@@ -329,7 +330,7 @@ class MainWindow(QMainWindow):
         self._executor = SwarmExecutor()
         self._executor.output_signal.connect(self._on_output)
         self._executor.finished_signal.connect(self._on_finished)
-        self._executor.setup(self._swarm_show_code, num_drones=3, simulated=simulated)
+        self._executor.setup(self._swarm_show_code, num_drones=3, simulated=simulated, address_offset=self._address_offset)
         self._executor.start()
 
     def _on_output(self, text: str) -> None:

@@ -14,6 +14,7 @@ SYSTEM_PROMPT = """You control a Crazyflie drone swarm consisting of 3 drones. W
 You do not need to worry about drone collisions or safety, just focus on creating an interesting show.
 The drones also are already launched and will land automatically, you do not need to include takeoff or landing logic in your function.
 Whenever the user gives a "dynamic" command, like "fly", avoid returning the same setpoints repeatedly. If the user gives a "static" command, like "form" you are allowed to return the same setpoints repeatedly.
+Try to follow the user's commands as closely as possible and do not add extra behavior that the user did not ask for.
 If a user does not specify the time, try to make the show 1 min long.
 
 The function receives elapsed time in seconds since takeoff. Return positions for all connected drones.
@@ -37,28 +38,28 @@ Use the swarm_show_execute tool to run the show.
 """
 
 
-@tool(parse_docstring=True)
-def swarm_show_execute(
-    swarm_show_func: str,
+def get_show_swarm_execute(
     num_drones: int = 3,
     simulated: bool = True,
     no_wait: bool = True,
-) -> str:
-    """Execute a swarm show by generating and running a complete script.
+):
+    """Create a swarm show executor tool with preset arguments."""
+    @tool(parse_docstring=True)
+    def swarm_show_execute(swarm_show_func: str) -> str:
+        """Execute a swarm show by generating and running a complete script.
 
-    Args:
-        swarm_show_func: Python function code for swarm_show(current_time: float).
-        num_drones: Number of drones to connect to.
-        simulated: Whether to use simulated swarm.
-        no_wait: When true, use instant sleep for fast preview.
+        Args:
+            swarm_show_func: Python function code for swarm_show(current_time: float).
 
-    Returns:
-        Result message with exit code and captured output.
-    """
-    exit_code, stdout, stderr = asyncio.run(
-        run_swarm_show(swarm_show_func, num_drones, simulated, no_wait)
-    )
-    return f"Exit code: {exit_code}\n{stdout}\n{stderr}".strip()
+        Returns:
+            Result message with exit code and captured output.
+        """
+        exit_code, stdout, stderr = asyncio.run(
+            run_swarm_show(swarm_show_func, num_drones, simulated, no_wait)
+        )
+        return f"Exit code: {exit_code}\n{stdout}\n{stderr}".strip()
+
+    return swarm_show_execute
 
 
 def create_agent(
@@ -68,7 +69,7 @@ def create_agent(
     """Create a deep agent configured to control the swarm."""
     from deepagents import create_deep_agent
 
-    agent_tools = tools if tools is not None else [swarm_show_execute]
+    agent_tools = tools if tools is not None else [get_show_swarm_execute(simulated=False, no_wait=True)]
 
     llm = ChatOpenAI(
         model="Qwen/Qwen3.6-27B",

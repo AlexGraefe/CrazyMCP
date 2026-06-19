@@ -22,6 +22,7 @@ class SwarmExecutor(QThread):
         self._num_drones: int = 3
         self._simulated: bool = True
         self._no_wait: bool = False
+        self._address_offset: int = 0
 
     def setup(
         self,
@@ -29,12 +30,14 @@ class SwarmExecutor(QThread):
         num_drones: int = 3,
         simulated: bool = True,
         no_wait: bool = False,
+        address_offset: int = 0,
     ) -> None:
         """Configure the executor with function code and options."""
         self._swarm_show_func = swarm_show_func
         self._num_drones = num_drones
         self._simulated = simulated
         self._no_wait = no_wait
+        self._address_offset = address_offset
 
     def run(self) -> None:
         """Execute the script in the thread's event loop."""
@@ -60,6 +63,7 @@ class SwarmExecutor(QThread):
             self._num_drones,
             self._simulated,
             self._no_wait,
+            self._address_offset,
         )
 
     @staticmethod

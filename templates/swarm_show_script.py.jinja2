@@ -23,7 +23,7 @@ async def main():
 {% endif %}
     
     try:
-        await swarm.connect("{{ base_address }}", {{ num_drones }})
+        await swarm.connect("{{ base_address }}", {{ num_drones }}, address_offset={{ address_offset }})
         await swarm.takeoff()
         
         start_time = asyncio.get_running_loop().time()

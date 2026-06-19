@@ -106,22 +106,22 @@ class Swarm(SwarmBase):
                 positions.append((0.0, 0.0, 0.0))
         return positions
 
-    async def connect(self, base_address: str, num_drones: int) -> None:
+    async def connect(self, base_address: str, num_drones: int, address_offset: int = 0) -> None:
         """Start connecting to *num_drones* drones derived from *base_address*.
 
         Returns when connection is complete.
         """
         if self._state != SwarmState.UNCONNECTED:
             return
-        await self._connect_impl(base_address, num_drones)
+        await self._connect_impl(base_address, num_drones, address_offset)
 
-    async def _connect_impl(self, base_address: str, num_drones: int) -> None:
+    async def _connect_impl(self, base_address: str, num_drones: int, address_offset: int = 0) -> None:
         """Internal coroutine that performs the actual connection sequence."""
         if self._connected_cfs:
             await self._disconnect_all()
 
         self._link_context = LinkContext()
-        uris = [f"{base_address}{index:02X}" for index in range(1, num_drones + 1)]
+        uris = [f"{base_address}{index:02X}" for index in range(1 + address_offset, num_drones + 1 + address_offset)]
 
         try:
             self._connected_cfs = list(

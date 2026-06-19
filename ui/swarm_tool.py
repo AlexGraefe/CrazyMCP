@@ -36,25 +36,20 @@ def create_swarm_tool(window: Optional["MainWindow"] = None) -> Callable:
     @tool(parse_docstring=True)
     def swarm_show_execute(
         swarm_show_func: str,
-        num_drones: int = 3,
-        simulated: bool = True,
-        no_wait: bool = True,
     ) -> str:
         """Execute a swarm show by generating and running a complete script.
 
         Args:
             swarm_show_func: Python function code for swarm_show(current_time: float).
-            num_drones: Number of drones to connect to.
-            simulated: Whether to use simulated swarm.
-            no_wait: When true, use instant sleep for fast preview.
 
         Returns:
             Result message with exit code and captured output.
         """
         if window is not None:
             window.set_swarm_show_code(swarm_show_func)
+        address_offset = window._address_offset if window is not None else 0
         exit_code, stdout, stderr = _run_sync(
-            run_swarm_show(swarm_show_func, num_drones, simulated, no_wait)
+            run_swarm_show(swarm_show_func, 3, True, True, address_offset)
         )
         return f"Exit code: {exit_code}\n{stdout}\n{stderr}".strip()
 

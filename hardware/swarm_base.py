@@ -44,7 +44,7 @@ class SwarmBase(ABC):
         pass
 
     @abstractmethod
-    async def connect(self, base_address: str, num_drones: int) -> None:
+    async def connect(self, base_address: str, num_drones: int, address_offset: int = 0) -> None:
         """Connect to *num_drones* drones derived from *base_address*."""
         pass
 

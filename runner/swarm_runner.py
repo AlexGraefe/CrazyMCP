@@ -13,6 +13,7 @@ def generate_script(
     simulated: bool = True,
     no_wait: bool = False,
     visualize: bool = False,
+    address_offset: int = 0,
 ) -> str:
     """Generate a complete swarm show script from the function code.
 
@@ -36,6 +37,7 @@ def generate_script(
         simulated=simulated,
         num_drones=num_drones,
         base_address="radio://0/84/2M/D91F7001",
+        address_offset=address_offset,
         swarm_show_func=swarm_show_func,
         no_wait=no_wait,
         visualize=visualize,
@@ -64,6 +66,7 @@ async def run_swarm_show(
     num_drones: int = 3,
     simulated: bool = True,
     no_wait: bool = False,
+    address_offset: int = 0,
 ) -> tuple[int, str, str]:
     """Generate and execute a swarm show script.
 
@@ -76,7 +79,7 @@ async def run_swarm_show(
     Returns:
         Tuple of (exit_code, stdout, stderr).
     """
-    script_content = generate_script(swarm_show_func, num_drones, simulated, no_wait)
+    script_content = generate_script(swarm_show_func, num_drones, simulated, no_wait, address_offset=address_offset)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(script_content)
