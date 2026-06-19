@@ -13,6 +13,10 @@ SYSTEM_PROMPT = """You control a Crazyflie drone swarm. Write a function `swarm_
 The function receives elapsed time in seconds since takeoff. Return positions for all connected drones.
 Return (setpoints, False) to continue the show, (setpoints, True) to end and land.
 
+Generate setpoints in normalized coordinates in the cube [-1, 1]^3:
+- x, y: -1 to 1 maps to the horizontal workspace
+- z: -1 is the floor (ground level), 1 is the maximum flight height
+
 Example:
 def swarm_show(current_time: float):
     import math

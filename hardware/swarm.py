@@ -8,7 +8,7 @@ It reports progress back to whatever object implements :class:`SwarmGUI`
 import asyncio
 
 import numpy as np
-from .swarm_base import SwarmBase, SwarmState
+from .swarm_base import SwarmBase, SwarmState, scale_setpoint
 from .swarm_logger import LoggingTask
 from .swarm_force_field_control import ForceFieldController
 
@@ -333,12 +333,16 @@ class Swarm(SwarmBase):
         drone at its current virtual position), one entry per connected drone.
         Returns immediately; the background loop will navigate toward the new
         targets continuously.  Ignored if not currently flying.
+        
+        LLM setpoints in [-1,1]^3 are automatically scaled to real-world coordinates.
         """
         if self._state != SwarmState.FLYING:
             return
+        # Scale LLM normalized coordinates to real-world coordinates
+        scaled_positions = [scale_setpoint(*p) if p is not None else None for p in positions]
         n = len(self._connected_cfs)
         self._target_positions = [
-            np.array(positions[i], dtype=float) if i < len(positions) and positions[i] is not None
+            np.array(scaled_positions[i], dtype=float) if i < len(scaled_positions) and scaled_positions[i] is not None
             else (self._virtual_positions[i].copy() if i < len(self._virtual_positions) else None)
             for i in range(n)
         ]
