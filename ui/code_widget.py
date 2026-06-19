@@ -1,5 +1,5 @@
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QTextEdit, QWidget, QVBoxLayout, QPushButton, QHBoxLayout
+from PyQt6.QtWidgets import QTextEdit, QWidget, QVBoxLayout
 
 
 class CodeWidget(QWidget):
@@ -12,38 +12,20 @@ class CodeWidget(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.setStyleSheet("background-color: #001a33;")
 
         self._code = QTextEdit()
         self._code.setReadOnly(True)
         self._code.setStyleSheet("""
             QTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
+                background-color: #000a1a;
+                color: #39ff14;
                 font-family: monospace;
                 font-size: 12px;
-                border: 1px solid #3e3e3e;
+                border: 1px solid #444444;
             }
         """)
         layout.addWidget(self._code)
-
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        self._clear_button = QPushButton("Clear")
-        self._clear_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3e3e3e;
-                color: #d4d4d4;
-                font-family: monospace;
-                font-size: 12px;
-                padding: 4px 12px;
-            }
-            QPushButton:hover {
-                background-color: #4e4e4e;
-            }
-        """)
-        self._clear_button.clicked.connect(self.clear)
-        button_layout.addWidget(self._clear_button)
-        layout.addLayout(button_layout)
 
     def set_code(self, code: str) -> None:
         """Set the code to display."""

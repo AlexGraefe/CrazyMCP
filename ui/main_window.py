@@ -10,7 +10,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QVBoxLayout,
     QLabel,
-    QProgressBar,
+    QTextEdit,
+    QSizePolicy,
 )
 
 from .chat_widget import ChatWidget
@@ -19,7 +20,7 @@ from .swarm_executor import SwarmExecutor
 
 
 class MainWindow(QMainWindow):
-    """Main application window with splitter layout for chat and code panels."""
+    """Main application window with splitter layout for chat and code panels at top, and controls at bottom."""
 
     _code_received = pyqtSignal(str)
 
@@ -27,14 +28,33 @@ class MainWindow(QMainWindow):
         """Create main UI components."""
         self.setWindowTitle("Crazyflie Swarm Control")
         self.resize(1000, 600)
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #001a33;
+            }
+            QStatusBar {
+                background-color: #001a33;
+                color: #39ff14;
+                font-family: monospace;
+            }
+        """)
 
         central = QWidget()
+        central.setStyleSheet("background-color: #001a33;")
         self.setCentralWidget(central)
 
-        main_layout = QHBoxLayout(central)
+        main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setStyleSheet("""
+            QSplitter::handle {
+                background-color: #444444;
+            }
+            QSplitter::handle:horizontal {
+                width: 1px;
+            }
+        """)
 
         self._chat = ChatWidget()
         self._code = CodeWidget()
@@ -46,28 +66,54 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 1)
 
         main_layout.addWidget(splitter)
+        main_layout.setStretchFactor(splitter, 1)
+
+        bottom_container = QWidget()
+        bottom_container.setStyleSheet("background-color: #001a33;")
+        bottom_container.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed))
+        bottom_layout = QHBoxLayout(bottom_container)
+        bottom_layout.setContentsMargins(10, 2, 10, 2)
+
+        self._input = QTextEdit()
+        self._input.setPlaceholderText("Enter prompt...")
+        self._input.setMaximumHeight(80)
+        self._input.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self._input.setStyleSheet("""
+            QTextEdit {
+                background-color: #000a1a;
+                color: #39ff14;
+                font-family: monospace;
+                font-size: 12px;
+                border: 1px solid #444444;
+            }
+        """)
+        self._input.textChanged.connect(self._on_input_changed)
 
         button_container = QWidget()
-        button_layout = QHBoxLayout(button_container)
-        button_layout.setContentsMargins(10, 5, 10, 5)
+        button_container.setStyleSheet("background-color: #001a33;")
+        button_layout = QVBoxLayout(button_container)
+        button_layout.setSpacing(1)
+        button_layout.setContentsMargins(0, 0, 0, 0)
 
         self._simulate_button = QPushButton("Simulate")
         self._simulate_button.setCheckable(True)
         self._simulate_button.setStyleSheet(self._button_style())
         self._simulate_button.clicked.connect(self._on_simulate)
 
-        self._fly_button = QPushButton("Fly")
-        self._fly_button.setCheckable(True)
-        self._fly_button.setStyleSheet(self._button_style())
-        self._fly_button.clicked.connect(self._on_fly)
+        self._experiment_button = QPushButton("Experiment")
+        self._experiment_button.setCheckable(True)
+        self._experiment_button.setStyleSheet(self._button_style())
+        self._experiment_button.clicked.connect(self._on_experiment)
+
+        self._clear_button = QPushButton("Clear")
+        self._clear_button.setStyleSheet(self._button_style())
+        self._clear_button.clicked.connect(self._on_clear)
 
         button_layout.addWidget(self._simulate_button)
-        button_layout.addWidget(self._fly_button)
-        button_layout.addStretch()
+        button_layout.addWidget(self._experiment_button)
+        button_layout.addWidget(self._clear_button)
 
-        bottom_container = QWidget()
-        bottom_layout = QHBoxLayout(bottom_container)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.addWidget(self._input, 1)
         bottom_layout.addWidget(button_container)
 
         main_layout.addWidget(bottom_container)
@@ -75,9 +121,6 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
         self._status.showMessage("Ready")
-
-        self._chat._input.returnPressed.disconnect()
-        self._chat._input.returnPressed.connect(self._on_prompt)
 
     def __init__(self, agent=None, parent=None):
         super().__init__(parent)
@@ -97,7 +140,7 @@ class MainWindow(QMainWindow):
         overlay.setObjectName("loadingOverlay")
         overlay.setStyleSheet("""
             QWidget#loadingOverlay {
-                background-color: rgba(0, 0, 0, 120);
+                background-color: rgba(0, 26, 51, 180);
             }
         """)
         overlay.setGeometry(self.rect())
@@ -107,7 +150,7 @@ class MainWindow(QMainWindow):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         loading_label = QLabel("LLM is thinking...")
-        loading_label.setStyleSheet("color: #ffffff; font-size: 16px;")
+        loading_label.setStyleSheet("color: #39ff14; font-size: 16px; font-family: monospace;")
         layout.addWidget(loading_label)
 
         self._loading_overlay = overlay
@@ -129,37 +172,52 @@ class MainWindow(QMainWindow):
                 QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
             else:
                 QApplication.restoreOverrideCursor()
+
+    def _on_input_changed(self) -> None:
+        """Handle text input changes - detect Enter to submit prompt."""
+        text = self._input.toPlainText()
+        if '\n' in text:
+            lines = text.split('\n')
+            prompt = lines[0].strip()
+            self._input.setPlainText('')
+            if prompt:
+                self._on_prompt(prompt)
+
     def _button_style(self) -> str:
         return """
             QPushButton {
-                background-color: #3e3e3e;
-                color: #d4d4d4;
+                background-color: #000a1a;
+                color: #39ff14;
                 font-family: monospace;
                 font-size: 12px;
-                padding: 6px 16px;
-                border: none;
+                padding: 2px 12px;
+                border: 1px solid #444444;
+                min-width: 80px;
             }
             QPushButton:hover {
-                background-color: #4e4e4e;
+                background-color: #002244;
+                border: 1px solid #555555;
             }
             QPushButton:disabled {
-                background-color: #2e2e2e;
-                color: #888888;
+                background-color: #000511;
+                color: #00aa00;
+                border: 1px solid #333333;
+            }
+            QPushButton:checked {
+                background-color: #003300;
+                border: 1px solid #555555;
             }
         """
 
-    def _on_prompt(self) -> None:
+    def _on_prompt(self, prompt: str) -> None:
         """Handle prompt submission and get LLM response."""
-        prompt = self._chat.get_input_text().strip()
         if not prompt:
             return
 
         self._chat.append_user_message(prompt)
-        self._chat.clear_input()
         self._chat.append_llm_thinking()
         self._set_buttons_enabled(False)
         # Force UI update so loading overlay becomes visible before blocking call
-        from PyQt6.QtWidgets import QApplication
         QApplication.processEvents()
 
         self._run_llm(prompt)
@@ -167,7 +225,6 @@ class MainWindow(QMainWindow):
     def _run_llm(self, prompt: str) -> None:
         """Run LLM with streaming and handle response live."""
         import asyncio
-        from PyQt6.QtWidgets import QApplication
 
         async def _stream():
             """Stream events from the agent and update UI token‑by‑token."""
@@ -249,19 +306,25 @@ class MainWindow(QMainWindow):
 
         self._execute_swarm(simulated=True)
 
-    def _on_fly(self) -> None:
-        """Handle fly button click."""
+    def _on_experiment(self) -> None:
+        """Handle experiment button click."""
         if not self._swarm_show_code:
-            QMessageBox.warning(self, "No Code", "No swarm_show code to fly.")
-            self._fly_button.setChecked(False)
+            QMessageBox.warning(self, "No Code", "No swarm_show code to experiment.")
+            self._experiment_button.setChecked(False)
             return
 
         self._execute_swarm(simulated=False)
 
+    def _on_clear(self) -> None:
+        """Handle clear button click."""
+        self._chat.clear_history()
+        self._code.set_code("")
+        self._swarm_show_code = None
+
     def _execute_swarm(self, simulated: bool) -> None:
         """Execute the swarm show script."""
         self._set_buttons_enabled(False)
-        self._status.showMessage("Running..." if simulated else "Flying...")
+        self._status.showMessage("Simulating..." if simulated else "Experimenting...")
 
         self._executor = SwarmExecutor()
         self._executor.output_signal.connect(self._on_output)
@@ -276,7 +339,7 @@ class MainWindow(QMainWindow):
     def _on_finished(self, exit_code: int, status: str) -> None:
         """Handle executor completion."""
         self._simulate_button.setChecked(False)
-        self._fly_button.setChecked(False)
+        self._experiment_button.setChecked(False)
         self._set_buttons_enabled(True)
 
         if status == "completed":
@@ -289,6 +352,6 @@ class MainWindow(QMainWindow):
     def _set_buttons_enabled(self, enabled: bool) -> None:
         """Enable/disable buttons during execution."""
         self._simulate_button.setEnabled(enabled)
-        self._fly_button.setEnabled(enabled)
+        self._experiment_button.setEnabled(enabled)
         # Update loading overlay visibility
         self._show_loading(not enabled)

@@ -1,8 +1,7 @@
 from datetime import datetime
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QTextCursor
-from PyQt6.QtWidgets import QTextEdit, QLineEdit, QVBoxLayout, QWidget, QHBoxLayout
+from PyQt6.QtWidgets import QTextEdit, QWidget, QVBoxLayout
 
 
 class ChatWidget(QWidget):
@@ -15,41 +14,20 @@ class ChatWidget(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.setStyleSheet("background-color: #001a33;")
 
         self._history = QTextEdit()
         self._history.setReadOnly(True)
         self._history.setStyleSheet("""
             QTextEdit {
-                background-color: #1e1e1e;
-                color: #d4d4d4;
+                background-color: #000a1a;
+                color: #39ff14;
                 font-family: monospace;
                 font-size: 12px;
-                border: 1px solid #3e3e3e;
+                border: 1px solid #444444;
             }
         """)
         layout.addWidget(self._history)
-
-        input_layout = QHBoxLayout()
-        self._input = QLineEdit()
-        self._input.setPlaceholderText("Enter prompt...")
-        self._input.setStyleSheet("""
-            QLineEdit {
-                background-color: #2d2d2d;
-                color: #d4d4d4;
-                font-family: monospace;
-                font-size: 12px;
-                border: 1px solid #3e3e3e;
-            }
-        """)
-        self._input.returnPressed.connect(self._on_send)
-        input_layout.addWidget(self._input)
-        layout.addLayout(input_layout)
-
-    def _on_send(self) -> None:
-        text = self._input.text().strip()
-        if text:
-            self.append_user_message(text)
-            self._input.clear()
 
     def append_user_message(self, message: str) -> None:
         """Append a user message to the chat history."""
@@ -81,18 +59,6 @@ class ChatWidget(QWidget):
         self._history.insertPlainText(text)
         self._history.moveCursor(QTextCursor.MoveOperation.End)
 
-    def get_prompt(self) -> str:
-        """Get the last user prompt from the input field."""
-        return self._input.text()
-
-    def clear_input(self) -> None:
-        """Clear the input field."""
-        self._input.clear()
-
     def clear_history(self) -> None:
         """Clear the chat history."""
         self._history.clear()
-
-    def get_input_text(self) -> str:
-        """Get current input text."""
-        return self._input.text()
