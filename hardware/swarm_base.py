@@ -10,9 +10,9 @@ from enum import Enum, auto
 # LLM generates setpoints in [-1, 1]^3:
 # - x, y: -1 to 1 maps to horizontal workspace
 # - z: -1 is floor, 1 is maximum flight height
-SCALE_XY = 1.5
-SCALE_Z = 1.0
-OFFSET_Z = 1.0
+SCALE_XY = 1.0
+SCALE_Z = 0.5
+OFFSET_Z = 0.7
 
 
 def scale_setpoint(x: float, y: float, z: float) -> tuple[float, float, float]:

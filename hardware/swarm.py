@@ -211,7 +211,7 @@ class Swarm(SwarmBase):
                     np.array([x, y, z + 1.0]) for x, y, z in self._pad_positions
                 ]
                 # Block until the virtual model says all drones are close enough.
-                await self._wait_for_targets(timeout=30.0)
+                await self._wait_for_targets(timeout=15.0)
 
             # Stop the FF loop before issuing the firmware land command.
             await self._cancel_ff_loop()

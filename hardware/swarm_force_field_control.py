@@ -11,8 +11,8 @@ FF_VIRTUAL_UPDATES_PER_GOTO = 10
 FF_VIRTUAL_UPDATE_INTERVAL = FF_WAYPOINT_INTERVAL / FF_VIRTUAL_UPDATES_PER_GOTO
 FF_MAX_VELOCITY = 0.5
 FF_POSITION_TOLERANCE = 0.05
-FF_BOUNDARY_MIN = np.array([-1.5, -1.5, 0.1])
-FF_BOUNDARY_MAX = np.array([ 1.5,  1.5, 2.0])
+FF_BOUNDARY_MIN = np.array([-1.2, -1.2, 0.1])
+FF_BOUNDARY_MAX = np.array([ 1.2,  1.2, 1.5])
 
 class ForceFieldController:
     """Encapsulates the force‑field navigation logic.
