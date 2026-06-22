@@ -7,6 +7,8 @@ from langchain.tools import tool
 from agent import create_agent
 from runner.swarm_runner import run_swarm_show
 
+from rich import print
+
 
 def run() -> None:
     """Entry point for the CLI swarm control interface."""
