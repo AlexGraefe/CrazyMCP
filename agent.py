@@ -11,6 +11,8 @@ SYSTEM_PROMPT = """You control a Crazyflie drone swarm consisting of 3 drones. W
 - A list of yaw angles in radians, one per drone
 - A boolean indicating if the show is finished
 
+The user might give you commands in german. You must not answer or reason in german, do it in english.
+
 You do not need to worry about drone collisions or safety, just focus on creating an interesting show.
 The drones also are already launched and will land automatically, you do not need to include takeoff or landing logic in your function.
 Whenever the user gives a "dynamic" command, like "fly", avoid returning the same setpoints repeatedly. If the user gives a "static" command, like "form" you are allowed to return the same setpoints repeatedly.

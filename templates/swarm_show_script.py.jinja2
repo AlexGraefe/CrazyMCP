@@ -41,10 +41,13 @@ async def main():
 {% endif %}
         
         await swarm.land()
-    except Exception as e:
-        print(f"Error during swarm show: {e}")
+    except (KeyboardInterrupt, Exception) as e:
+        if isinstance(e, KeyboardInterrupt):
+            print("\nInterrupted — performing emergency land...")
+        else:
+            print(f"Error during swarm show: {e}")
         try:
-            await swarm.land()
+            await swarm.emergency_land()
         except Exception:
             pass
     finally:
