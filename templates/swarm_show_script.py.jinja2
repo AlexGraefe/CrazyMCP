@@ -14,7 +14,7 @@ from simulator import SimulatedSwarm
 
 async def main():
     SwarmClass = SimulatedSwarm if {{ simulated }} else Swarm
-    swarm = SwarmClass()
+    swarm = SwarmClass(testbed_min={{ testbed_min }}, testbed_max={{ testbed_max }})
     
     try:
         await swarm.connect("{{ base_address }}", {{ num_drones }}, address_offset={{ address_offset }})

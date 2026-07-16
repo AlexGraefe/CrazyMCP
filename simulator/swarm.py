@@ -3,7 +3,7 @@
 import asyncio
 
 import numpy as np
-from hardware.swarm_base import SwarmBase, SwarmState, scale_setpoint
+from hardware.swarm_base import SwarmBase, SwarmState
 
 
 TAKEOFF_HEIGHT = 1.0
@@ -37,7 +37,9 @@ class SimulatedSwarm(SwarmBase):
     All async operations complete immediately with minimal delays for testing.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, testbed_min, testbed_max) -> None:
+        self._testbed_min = np.asarray(testbed_min, dtype=float)
+        self._testbed_max = np.asarray(testbed_max, dtype=float)
         self._state = SwarmState.UNCONNECTED
         self._connected_uris: list[str] = []
         self._position_logger: SimulatedPositionLogger | None = None
@@ -126,18 +128,15 @@ class SimulatedSwarm(SwarmBase):
 
     def safegoto(self, positions: list, yaws: list | None = None) -> None:
         """Update virtual positions to targets immediately.
-        
-        LLM setpoints in [-1,1]^3 are automatically scaled to real-world coordinates.
+
+        *positions* are ``(x, y, z)`` tuples in real-world meters.
         """
         if self._state != SwarmState.FLYING:
             return
-        
-        # Scale LLM normalized coordinates to real-world coordinates
-        scaled_positions = [scale_setpoint(*p) if p is not None else None for p in positions]
 
         n = len(self._connected_cfs)
         self._target_positions = [
-            np.array(scaled_positions[i], dtype=float) if i < len(scaled_positions) and scaled_positions[i] is not None
+            np.array(positions[i], dtype=float) if i < len(positions) and positions[i] is not None
             else (self._virtual_positions[i].copy() if i < len(self._virtual_positions) else None)
             for i in range(n)
         ]
@@ -151,8 +150,6 @@ class SimulatedSwarm(SwarmBase):
             self._position_logger.update_positions(
                 [(float(p[0]), float(p[1]), float(p[2])) for p in self._virtual_positions]
             )
-        
-        # print(f"Simulated goto: {scaled_positions}")
 
     def get_positions(self) -> list[tuple[float, float, float]] | None:
         if not self._connected_cfs:

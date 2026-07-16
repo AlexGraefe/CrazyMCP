@@ -8,7 +8,7 @@ It reports progress back to whatever object implements :class:`SwarmGUI`
 import asyncio
 
 import numpy as np
-from .swarm_base import SwarmBase, SwarmState, scale_setpoint
+from .swarm_base import SwarmBase, SwarmState
 from .swarm_logger import LoggingTask
 from .swarm_force_field_control import ForceFieldController
 
@@ -25,7 +25,7 @@ TAKEOFF_DURATION = 2.0
 LOG_INTERVAL = 100  # ms
 STAGGER_STRIDE = 5   # launch/land every Nth drone per round (round 0: idx 0,4,8…; round 1: 1,5,9…)
 STAGGER_DELAY  = TAKEOFF_DURATION + 0.5  # seconds between stagger groups
-LED_COLORS = [0x00FF0000, 0x0000FF00, 0x000000FF]  # Red, Green, Blue (WRGB8888, cycles for >3 drones)
+LED_COLORS = [0x00FF0000, 0x0000FF00, 0x000000FF, 0x00FF00FF]  # Red, Green, Blue (WRGB8888, cycles for >3 drones)
 
 # -- Force-field navigation constants ----------------------------------------
 FF_LOG_INTERVAL             = 50     # ms – position-logger rate during goto
@@ -39,8 +39,6 @@ FF_VIRTUAL_UPDATES_PER_GOTO = 10     # force-field steps per go_to command
 FF_VIRTUAL_UPDATE_INTERVAL  = FF_WAYPOINT_INTERVAL / FF_VIRTUAL_UPDATES_PER_GOTO
 FF_MAX_VELOCITY             = 0.5    # m/s cap on the virtual velocity
 FF_POSITION_TOLERANCE       = 0.05   # m – considered "reached"
-FF_BOUNDARY_MIN             = np.array([-1.5, -1.5, 0.1])
-FF_BOUNDARY_MAX             = np.array([ 1.5,  1.5, 2.0])
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +50,7 @@ class Swarm(SwarmBase):
 
     Public API::
 
-        swarm = Swarm(gui)
+        swarm = Swarm(testbed_min, testbed_max)
         swarm.connect("radio://0/80/2M/E7E7E7E7E7", 3)
         swarm.start()                          # arm + take off; starts FF loop
         swarm.safegoto([(x, y, z), ...])       # update targets (non-blocking)
@@ -67,7 +65,9 @@ class Swarm(SwarmBase):
     tolerance, stops the loop, and issues the land command.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, testbed_min, testbed_max) -> None:
+        self._testbed_min = np.asarray(testbed_min, dtype=float)
+        self._testbed_max = np.asarray(testbed_max, dtype=float)
         self._state = SwarmState.UNCONNECTED
         self._connected_cfs: list[object] = []
         self._link_context: object | None = None
@@ -426,13 +426,11 @@ class Swarm(SwarmBase):
     def safegoto(self, positions: list, yaws: list | None = None) -> None:
         """Update target positions consumed by the force-field loop.
 
-        *positions* is a list of ``(x, y, z)`` tuples (or ``None`` to keep a
-        drone at its current virtual position), one entry per connected drone.
-        *yaws* is an optional list of yaw angles in radians, one per drone.
-        Returns immediately; the background loop will navigate toward the new
-        targets continuously.  Ignored if not currently flying.
-        
-        LLM setpoints in [-1,1]^3 are automatically scaled to real-world coordinates.
+        *positions* is a list of ``(x, y, z)`` tuples in real-world meters (or
+        ``None`` to keep a drone at its current virtual position), one entry per
+        connected drone.  *yaws* is an optional list of yaw angles in radians,
+        one per drone.  Returns immediately; the background loop will navigate
+        toward the new targets continuously.  Ignored if not currently flying.
         """
         if self._state != SwarmState.FLYING:
             return
@@ -441,10 +439,8 @@ class Swarm(SwarmBase):
             self._target_yaws = [float(yaws[i]) if i < len(yaws) else 0.0 for i in range(n)]
         else:
             self._target_yaws = [0.0] * n
-        # Scale LLM normalized coordinates to real-world coordinates
-        scaled_positions = [scale_setpoint(*p) if p is not None else None for p in positions]
         self._target_positions = [
-            np.array(scaled_positions[i], dtype=float) if i < len(scaled_positions) and scaled_positions[i] is not None
+            np.array(positions[i], dtype=float) if i < len(positions) and positions[i] is not None
             else (self._virtual_positions[i].copy() if i < len(self._virtual_positions) else None)
             for i in range(n)
         ]
@@ -463,7 +459,11 @@ class Swarm(SwarmBase):
         latest live positions are polled for the GUI.
         """
         # Initialise controller with current virtual and target positions.
-        controller = ForceFieldController(self._virtual_positions)
+        controller = ForceFieldController(
+            self._virtual_positions,
+            self._testbed_min,
+            self._testbed_max,
+        )
         steps = 0
         try:
             while True:

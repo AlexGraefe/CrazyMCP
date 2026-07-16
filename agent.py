@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from runner.swarm_runner import run_swarm_show
 
 
-SYSTEM_PROMPT = """You control a Crazyflie drone swarm consisting of 3 drones. Write a function `swarm_show(current_time: float)` that returns:
+SYSTEM_PROMPT_TEMPLATE = """You control a Crazyflie drone swarm consisting of 4 drones. Write a function `swarm_show(current_time: float)` that returns:
 - A list of (x, y, z) setpoints for each drone as tuples
 - A list of yaw angles in radians, one per drone
 - A boolean indicating if the show is finished
@@ -18,21 +18,23 @@ The drones also are already launched and will land automatically, you do not nee
 Whenever the user gives a "dynamic" command, like "fly", avoid returning the same setpoints repeatedly. If the user gives a "static" command, like "form" you are allowed to return the same setpoints repeatedly.
 Try to follow the user's commands as closely as possible and do not add extra behavior that the user did not ask for.
 If a user does not specify the time, try to make the show 1 min long.
+Try to avoid very slow velocitites, so try to keep velocitites at more than 0.3m/s.
 
 The function receives elapsed time in seconds since takeoff. Return positions for all connected drones.
 Return (setpoints, False) to continue the show, (setpoints, True) to end and land.
 
-Generate setpoints in normalized coordinates in the cube [-1, 1]^3:
-- x, y: -1 to 1 maps to the horizontal workspace
-- z: -1 is the floor (ground level), 1 is the maximum flight height
+Generate setpoints in real-world meters within the testbed flight volume:
+- x: {min_x} to {max_x} m
+- y: {min_y} to {max_y} m
+- z: {min_z} to {max_z} m (height above the floor)
 
 Example:
 def swarm_show(current_time: float):
     import math
     x = 0.5 * math.cos(current_time)
     y = 0.5 * math.sin(current_time)
-    yaws = [math.sin(current_time * 0.5), -math.sin(current_time * 0.5), 0.0]  # yaw per drone
-    setpoints = [(x, y, 1.0), (-x, -y, 1.0), (0, 0, 1.0)]
+    yaws = [math.sin(current_time * 0.5), -math.sin(current_time * 0.5), 0.0, 0.0]  # yaw per drone
+    setpoints = [(x, y, 1.0), (-x, -y, 1.0), (0.0, 0.0, 1.0), (0.0, 0.0, 1.0)]
     finished = current_time > 10.0
     return setpoints, yaws, finished
 
@@ -40,10 +42,24 @@ Use the swarm_show_execute tool to run the show.
 """
 
 
+def build_system_prompt(testbed_min, testbed_max) -> str:
+    """Build the LLM system prompt, injecting the testbed flight volume (meters)."""
+    return SYSTEM_PROMPT_TEMPLATE.format(
+        min_x=testbed_min[0],
+        max_x=testbed_max[0],
+        min_y=testbed_min[1],
+        max_y=testbed_max[1],
+        min_z=testbed_min[2],
+        max_z=testbed_max[2],
+    )
+
+
 def get_show_swarm_execute(
-    num_drones: int = 3,
+    num_drones: int = 4,
     simulated: bool = True,
     no_wait: bool = True,
+    testbed_min: tuple[float, float, float] = (-1.5, -1.5, 0.1),
+    testbed_max: tuple[float, float, float] = (1.5, 1.5, 2.0),
 ):
     """Create a swarm show executor tool with preset arguments."""
     @tool(parse_docstring=True)
@@ -57,7 +73,14 @@ def get_show_swarm_execute(
             Result message with exit code and captured output.
         """
         exit_code, stdout, stderr = asyncio.run(
-            run_swarm_show(swarm_show_func, num_drones, simulated, no_wait)
+            run_swarm_show(
+                swarm_show_func,
+                num_drones,
+                simulated,
+                no_wait,
+                testbed_min=testbed_min,
+                testbed_max=testbed_max,
+            )
         )
         return f"Exit code: {exit_code}\n{stdout}\n{stderr}".strip()
 
@@ -65,23 +88,27 @@ def get_show_swarm_execute(
 
 
 def create_agent(
+    testbed_min: tuple[float, float, float],
+    testbed_max: tuple[float, float, float],
     include_generate_script: bool = False,
     tools: list | None = None,
 ) -> None:
     """Create a deep agent configured to control the swarm."""
     from deepagents import create_deep_agent
 
-    agent_tools = tools if tools is not None else [get_show_swarm_execute(simulated=False, no_wait=True)]
+    agent_tools = tools if tools is not None else [
+        get_show_swarm_execute(simulated=False, no_wait=True, testbed_min=testbed_min, testbed_max=testbed_max)
+    ]
 
     llm = ChatOpenAI(
         model="Qwen/Qwen3.6-27B",
-        base_url="http://localhost:8000/v1",
+        base_url="http://134.130.192.84:8000/v1",
         api_key="1",
     )
 
     agent = create_deep_agent(
         model=llm,
         tools=agent_tools,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=build_system_prompt(testbed_min, testbed_max),
     )
     return agent
