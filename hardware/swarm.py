@@ -23,6 +23,7 @@ from cflib2.toc_cache import FileTocCache
 TAKEOFF_HEIGHT = 1.0
 TAKEOFF_DURATION = 2.0
 LOG_INTERVAL = 100  # ms
+PAD_POSITION_SAMPLES = 10  # number of reads averaged for pad positions
 STAGGER_STRIDE = 5   # launch/land every Nth drone per round (round 0: idx 0,4,8…; round 1: 1,5,9…)
 STAGGER_DELAY  = TAKEOFF_DURATION + 0.5  # seconds between stagger groups
 LED_COLORS = [0x00FF0000, 0x0000FF00, 0x000000FF, 0x00FF00FF]  # Red, Green, Blue (WRGB8888, cycles for >3 drones)
@@ -360,11 +361,11 @@ class Swarm(SwarmBase):
                 param.set("colorLedBot.wrgb8888", LED_COLORS[i % len(LED_COLORS)])
                 param.set("stabilizer.controller", 1)
 
-            print("Reading pad positions...")
+            print(f"Reading pad positions ({PAD_POSITION_SAMPLES} reads, averaged)...")
             temp_logger = LoggingTask(
                 self._connected_cfs, ["stateEstimate.x", "stateEstimate.y", "stateEstimate.z"], LOG_INTERVAL
             )
-            pos_data = await temp_logger.read_once()
+            pos_data = await temp_logger.read_mean(PAD_POSITION_SAMPLES)
             self._pad_positions = [
                 (
                     float(d["stateEstimate.x"]),

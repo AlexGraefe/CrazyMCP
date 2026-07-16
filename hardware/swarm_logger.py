@@ -62,6 +62,48 @@ class LoggingTask:
 
         return await asyncio.gather(*[_read_single(cf) for cf in self._crazyflies])
 
+    async def read_mean(self, n_samples: int) -> list[dict | None]:
+        """Read n samples per Crazyflie in parallel and return the per-variable mean.
+
+        Each entry maps variable name to its mean over the collected samples, or
+        None if no samples could be read for that drone.
+        """
+        async def _read_mean_single(cf: object) -> dict | None:
+            log = cf.log()
+            block = await log.create_block()
+            for v in self._variables:
+                await block.add_variable(v)
+            stream = await block.start(self._interval_ms)
+            try:
+                samples: list[dict] = []
+                for _ in range(n_samples):
+                    try:
+                        result = await stream.next()
+                        samples.append(result.data)
+                    except Exception:
+                        break
+                if not samples:
+                    return None
+                means: dict[str, float] = {}
+                for var in self._variables:
+                    values = [
+                        float(s[var])
+                        for s in samples
+                        if var in s and s[var] is not None
+                    ]
+                    means[var] = sum(values) / len(values) if values else 0.0
+                return means
+            finally:
+                stop = getattr(stream, "stop", None)
+                if callable(stop):
+                    result = stop()
+                    if asyncio.iscoroutine(result):
+                        await result
+
+        return await asyncio.gather(
+            *[_read_mean_single(cf) for cf in self._crazyflies]
+        )
+
     def get_log(self, cf_index: int) -> dict | None:
         if 0 <= cf_index < len(self._latest_logs):
             return self._latest_logs[cf_index]
