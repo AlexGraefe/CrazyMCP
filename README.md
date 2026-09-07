@@ -5,6 +5,12 @@ A demo project that uses an LLM to control a swarm of Crazyflie quadcopters.
 You need two PCs for this. One to run the frontend and the GPU PC that runs the LLM.
 Your local PC needs to be connected to a Crazyflie 2 Radio.
 
+Connect to the GPU PC:
+
+```bash
+ssh ssh <account name>@<ip address of GPU PC> 
+```
+
 ## Installation
 
 Clone this repo (both on the GPU PC and the local PC):
@@ -27,6 +33,20 @@ Restart your terminal if necessary, then verify the installation:
 ```bash
 uv --version
 ```
+
+In case it is not found, do the following:
+
+```bash
+nano ~/.bashrc
+```
+
+At the end of the file add:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Restart your terminal.
+
 
 ### 2. Create the virtual environment
 
