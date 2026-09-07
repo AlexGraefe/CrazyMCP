@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "cfclient>=2026.8",
     "cflib2",
     "deepagents>=0.6.10",
     "httpx>=0.28.1",
@@ -12,7 +13,6 @@ dependencies = [
     "langchain[openai,openrouter]>=1.3.9",
     "matplotlib>=3.11.0",
     "mcp[cli]>=1.27.2",
-    "pyqt6>=6.11.0",
     "rich>=15.0.0",
 ]
 

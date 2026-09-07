@@ -72,6 +72,12 @@ To activate the virtual environment, run:
 source .venv/bin/activate
 ```
 
+Install vllm (only on the GPU PC):
+```
+uv pip install vllm --torch-backend=auto
+uv pip install bitsandbytes
+```
+
 
 ## How to run the repo:
 
@@ -79,8 +85,10 @@ Turn on the four drones.
 
 On the GPU PC, run:
 ```bash
-vllm serve Qwen/Qwen3.6-27B --port 8000 --tensor-parallel-size 1 --max-model-len 128000 --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder --quantization bitsandbytes --max_num_seqs 1
+vllm serve Qwen/Qwen3.6-27B --port 8001 --tensor-parallel-size 1 --max-model-len 128000 --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder --quantization bitsandbytes --max_num_seqs 1
 ```
+
+
 
 It will take a while till it launches, especially, when run for the first time as it needs to download the LLM.
 
