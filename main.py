@@ -15,6 +15,13 @@ TESTBED_MIN: tuple[float, float, float] = (-1.5, -1.5, 0.4)  # floor corner (x, 
 TESTBED_MAX: tuple[float, float, float] = (1.5, 1.5, 2.0)    # ceiling corner (x, y, z)
 
 
+def _valid_port(value: str) -> int:
+    port = int(value)
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
 @tool(parse_docstring=True)
 def swarm_show_execute(swarm_show_func: str) -> str:
     """Execute a swarm show by generating and running a complete script.
@@ -29,13 +36,21 @@ def swarm_show_execute(swarm_show_func: str) -> str:
     return "Code captured. Will run after LLM finishes."
 
 
-def _run_agent(prompt: str, simulate: bool, address_offset: int) -> None:
+def _run_agent(
+    prompt: str,
+    simulate: bool,
+    address_offset: int,
+    gpu_ip: str,
+    gpu_port: int,
+) -> None:
     _captured["swarm_show_func"] = None
 
     agent = create_agent(
         testbed_min=TESTBED_MIN,
         testbed_max=TESTBED_MAX,
         tools=[swarm_show_execute],
+        gpu_ip=gpu_ip,
+        gpu_port=gpu_port,
     )
 
     stream = agent.stream_events(
@@ -91,6 +106,19 @@ def run() -> None:
         action="store_true",
         help="Run in simulation mode",
     )
+    parser.add_argument(
+        "--gpu-ip",
+        default="134.130.192.85",
+        metavar="IP",
+        help="IP address or hostname of the GPU PC (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--gpu-port",
+        type=_valid_port,
+        default=8001,
+        metavar="PORT",
+        help="Port of the OpenAI-compatible LLM server (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     while True:
@@ -101,7 +129,13 @@ def run() -> None:
             break
         if not prompt:
             break
-        _run_agent(prompt, simulate=args.simulate, address_offset=args.address_offset)
+        _run_agent(
+            prompt,
+            simulate=args.simulate,
+            address_offset=args.address_offset,
+            gpu_ip=args.gpu_ip,
+            gpu_port=args.gpu_port,
+        )
 
 
 if __name__ == "__main__":

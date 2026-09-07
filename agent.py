@@ -132,6 +132,8 @@ def create_agent(
     testbed_max: tuple[float, float, float],
     include_generate_script: bool = False,
     tools: list | None = None,
+    gpu_ip: str = "134.130.192.85",
+    gpu_port: int = 8001,
 ) -> None:
     """Create a deep agent configured to control the swarm."""
     from deepagents import create_deep_agent
@@ -142,7 +144,7 @@ def create_agent(
 
     llm = ChatOpenAI(
         model="Qwen/Qwen3.6-27B",
-        base_url="http://134.130.192.84:8000/v1",
+        base_url=f"http://{gpu_ip}:{gpu_port}/v1",
         api_key="1",
     )
 
