@@ -229,3 +229,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/.gitignore
+/.idea/crazymcp.iml
+/.idea/modules.xml
+/.idea/vcs.xml
