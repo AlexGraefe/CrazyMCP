@@ -3,6 +3,7 @@
 Provides the common interface shared by both real and simulated swarm implementations.
 """
 
+import math
 from abc import ABC, abstractmethod
 from enum import Enum, auto
 
@@ -19,12 +20,20 @@ def rgb_to_wrgb(rgb) -> int:
     """Pack an ``(r, g, b)`` color (0-255 per channel) into WRGB8888 (0xWWRRGGBB).
 
     The color LED deck has a dedicated white LED, so the common part of the
-    three channels is moved into the white channel (same conversion as the
-    cfclient Color LED tab).  Out-of-range values are clamped.
+    three channels is moved into the white channel.  Out-of-range values are
+    clamped.
+
+    The firmware applies a gamma of 2.0 to every channel *after* unpacking
+    (``colorLedBot.brightCorr``, on by default), so emitted light adds up in
+    squares: the colored LED has to supply ``c**2 - w**2``, not ``c - w``.
+    Subtracting linearly (as the cfclient Color LED tab does) leaves too
+    little color next to the white LED and washes out every color that is not
+    fully saturated, e.g. pink ``(255, 128, 128)`` turns almost white.
     """
     r, g, b = (max(0, min(255, int(round(float(c))))) for c in rgb)
     w = min(r, g, b)
-    return (w << 24) | ((r - w) << 16) | ((g - w) << 8) | (b - w)
+    r, g, b = (round(math.sqrt(c * c - w * w)) for c in (r, g, b))
+    return (w << 24) | (r << 16) | (g << 8) | b
 
 
 class SwarmBase(ABC):
