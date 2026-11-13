@@ -1,5 +1,6 @@
 import asyncio
 import os
+import signal
 import sys
 import tempfile
 from datetime import datetime
@@ -72,11 +73,36 @@ async def _run_script(script_path: str) -> tuple[int, str, str]:
             stdout=stdout_file,
             stderr=stderr_file,
         )
-        await proc.wait()
+
+        # Emergency stop: the script lands the drones when it receives SIGINT.
+        # Keep waiting for it instead of letting Ctrl+C cancel this coroutine:
+        # asyncio kills a still-running child when its event loop shuts down,
+        # which would stop the script mid-landing and leave the drones
+        # hovering. Forwarding also covers a signal sent to this process only.
+        terminate_requested = False
+
+        def _forward_stop(sig: signal.Signals) -> None:
+            nonlocal terminate_requested
+            terminate_requested |= sig == signal.SIGTERM
+            print("\nStop requested — emergency landing, waiting for the drones...")
+            if proc.returncode is None:
+                proc.send_signal(signal.SIGINT)
+
+        loop = asyncio.get_running_loop()
+        stop_signals = (signal.SIGINT, signal.SIGTERM)
+        for sig in stop_signals:
+            loop.add_signal_handler(sig, _forward_stop, sig)
+        try:
+            await proc.wait()
+        finally:
+            for sig in stop_signals:
+                loop.remove_signal_handler(sig)
 
     stdout_text = stdout_path.read_text()
     stderr_text = stderr_path.read_text()
     print(f"Script output (logs: {stdout_path}, {stderr_path}):\n{stdout_text}\n{stderr_text}")
+    if terminate_requested:
+        raise SystemExit(128 + signal.SIGTERM)
     return proc.returncode, stdout_text, stderr_text
 
 

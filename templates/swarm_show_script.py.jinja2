@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Auto-generated swarm show script."""
 import asyncio
+import signal
 import sys
 import os
 
@@ -12,43 +13,57 @@ from simulator import SimulatedSwarm
 
 {{ swarm_show_func }}
 
+async def run_show(swarm):
+    await swarm.connect("{{ base_address }}", {{ num_drones }}, address_offset={{ address_offset }})
+    await swarm.takeoff()
+
+    start_time = asyncio.get_running_loop().time()
+    while True:
+        elapsed = asyncio.get_running_loop().time() - start_time
+        result = swarm_show(elapsed)
+        if len(result) == 4:
+            setpoints, yaws, colors, finished = result
+        else:  # legacy 3-tuple without LED colors
+            setpoints, yaws, finished = result
+            colors = None
+        swarm.goto(setpoints, yaws, colors)
+        if finished:
+            break
+{% if no_wait %}
+        # await asyncio.sleep(0)
+{% else %}
+        await asyncio.sleep(0.1)
+        print(f"Time: {elapsed:.2f}s, Setpoints: {setpoints}, Colors: {colors}, Finished: {finished}")
+{% endif %}
+
+    await swarm.land()
+
+
 async def main():
     SwarmClass = SimulatedSwarm if {{ simulated }} else Swarm
     swarm = SwarmClass(testbed_min={{ testbed_min }}, testbed_max={{ testbed_max }})
-    
+
+    # Emergency stop: Ctrl+C (or SIGTERM / a closed terminal) cancels the show
+    # task only. main() itself keeps running, so the emergency landing below
+    # cannot be aborted by pressing Ctrl+C again. Without these handlers
+    # asyncio.run() cancels main() with a CancelledError, which skips the
+    # landing entirely and leaves the drones hovering.
+    show_task = asyncio.create_task(run_show(swarm))
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        loop.add_signal_handler(sig, show_task.cancel)
+
     try:
-        await swarm.connect("{{ base_address }}", {{ num_drones }}, address_offset={{ address_offset }})
-        await swarm.takeoff()
-        
-        start_time = asyncio.get_running_loop().time()
-        while True:
-            elapsed = asyncio.get_running_loop().time() - start_time
-            result = swarm_show(elapsed)
-            if len(result) == 4:
-                setpoints, yaws, colors, finished = result
-            else:  # legacy 3-tuple without LED colors
-                setpoints, yaws, finished = result
-                colors = None
-            swarm.goto(setpoints, yaws, colors)
-            if finished:
-                break
-{% if no_wait %}
-            # await asyncio.sleep(0)
-{% else %}
-            await asyncio.sleep(0.1)
-            print(f"Time: {elapsed:.2f}s, Setpoints: {setpoints}, Colors: {colors}, Finished: {finished}")
-{% endif %}
-        
-        await swarm.land()
-    except (KeyboardInterrupt, Exception) as e:
-        if isinstance(e, KeyboardInterrupt):
+        await show_task
+    except (asyncio.CancelledError, Exception) as e:
+        if isinstance(e, asyncio.CancelledError):
             print("\nInterrupted — performing emergency land...")
         else:
             print(f"Error during swarm show: {e}")
         try:
             await swarm.emergency_land()
-        except Exception:
-            pass
+        except Exception as land_error:
+            print(f"Emergency land failed: {land_error}")
     finally:
         await swarm.disconnect()
 
