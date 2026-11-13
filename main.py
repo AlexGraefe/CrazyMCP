@@ -77,7 +77,7 @@ def _run_agent(
     exit_code, stdout, stderr = asyncio.run(
         run_swarm_show(
             swarm_show_func,
-            num_drones=4,
+            num_drones=3,
             simulated=simulate,
             no_wait=False,
             address_offset=address_offset,

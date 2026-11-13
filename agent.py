@@ -95,7 +95,7 @@ def build_system_prompt(testbed_min, testbed_max) -> str:
 
 
 def get_show_swarm_execute(
-    num_drones: int = 4,
+    num_drones: int = 3,
     simulated: bool = True,
     no_wait: bool = True,
     testbed_min: tuple[float, float, float] = (-1.5, -1.5, 0.1),
