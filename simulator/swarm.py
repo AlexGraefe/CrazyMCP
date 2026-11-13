@@ -3,7 +3,7 @@
 import asyncio
 
 import numpy as np
-from hardware.swarm_base import SwarmBase, SwarmState
+from hardware.swarm_base import SwarmBase, SwarmState, rgb_to_wrgb
 
 
 TAKEOFF_HEIGHT = 1.0
@@ -47,6 +47,7 @@ class SimulatedSwarm(SwarmBase):
         self._ff_task: asyncio.Task | None = None
         self._virtual_positions: list[np.ndarray] = []
         self._target_positions: list[np.ndarray | None] = []
+        self._colors: list[int | None] = []  # WRGB8888 per drone
 
     # -- State ---------------------------------------------------------------
 
@@ -126,15 +127,22 @@ class SimulatedSwarm(SwarmBase):
         await asyncio.sleep(0.001)
         self._set_state(SwarmState.CONNECTED)
 
-    def safegoto(self, positions: list, yaws: list | None = None) -> None:
+    def safegoto(self, positions: list, yaws: list | None = None, colors: list | None = None) -> None:
         """Update virtual positions to targets immediately.
 
-        *positions* are ``(x, y, z)`` tuples in real-world meters.
+        *positions* are ``(x, y, z)`` tuples in real-world meters.  *colors*
+        are optional ``(r, g, b)`` tuples (0-255); they are converted to
+        WRGB8888 like on the real swarm so malformed colors fail here too.
         """
         if self._state != SwarmState.FLYING:
             return
 
         n = len(self._connected_cfs)
+        if colors is not None:
+            self._colors = [
+                rgb_to_wrgb(colors[i]) if i < len(colors) and colors[i] is not None else None
+                for i in range(n)
+            ]
         self._target_positions = [
             np.array(positions[i], dtype=float) if i < len(positions) and positions[i] is not None
             else (self._virtual_positions[i].copy() if i < len(self._virtual_positions) else None)

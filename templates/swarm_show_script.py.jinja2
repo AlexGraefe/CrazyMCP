@@ -23,15 +23,20 @@ async def main():
         start_time = asyncio.get_running_loop().time()
         while True:
             elapsed = asyncio.get_running_loop().time() - start_time
-            setpoints, yaws, finished = swarm_show(elapsed)
-            swarm.goto(setpoints, yaws)
+            result = swarm_show(elapsed)
+            if len(result) == 4:
+                setpoints, yaws, colors, finished = result
+            else:  # legacy 3-tuple without LED colors
+                setpoints, yaws, finished = result
+                colors = None
+            swarm.goto(setpoints, yaws, colors)
             if finished:
                 break
 {% if no_wait %}
             # await asyncio.sleep(0)
 {% else %}
             await asyncio.sleep(0.1)
-            print(f"Time: {elapsed:.2f}s, Setpoints: {setpoints}, Finished: {finished}")
+            print(f"Time: {elapsed:.2f}s, Setpoints: {setpoints}, Colors: {colors}, Finished: {finished}")
 {% endif %}
         
         await swarm.land()

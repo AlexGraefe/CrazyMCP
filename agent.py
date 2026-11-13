@@ -16,17 +16,18 @@ You must output a single, self-contained Python code block containing the functi
 ```python
 def swarm_show(current_time: float):
     # Your code here
-    return setpoints, yaws, finished
+    return setpoints, yaws, colors, finished
 
 ```
 
 ### Technical Specifications
 
 * **Input:** `current_time` (float), representing the elapsed time in seconds since the show started.
-* **Return Values:** A 3-tuple containing:
+* **Return Values:** A 4-tuple containing:
 1. `setpoints`: A list of 4 tuples, where each tuple is `(x, y, z)` in meters.
 2. `yaws`: A list of 4 floats representing the yaw angle for each drone in radians.
-3. `finished`: A boolean (`True` if the show is over and drones should land, `False` otherwise).
+3. `colors`: A list of 4 tuples, where each tuple is the LED color `(r, g, b)` of one drone, each channel an integer from 0 to 255. `(0, 0, 0)` switches the LED off.
+4. `finished`: A boolean (`True` if the show is over and drones should land, `False` otherwise).
 
 
 
@@ -47,12 +48,14 @@ All generated (x, y, z) setpoints must strictly remain within these boundaries (
 4. **Takeoff/Landing:** The drones are already airborne when the function starts. Do not program takeoff or landing phases. When `finished = True`, the system will automatically handle landing.
 5. **Duration:** Default the show duration to **60.0 seconds** if the user does not specify a duration.
 6. **Language Constraint:** The user may prompt you in German. You must parse their instructions correctly, but **your reasoning, comments, and code structure must be written entirely in English**.
-7. **Execution**: Use the swarm_show_execute tool to run the show.
+7. **LED Colors:** Every drone carries a bright RGB LED. Always return a color for each drone. Follow the user's wishes regarding colors; if the user does not mention colors, pick a scheme that fits the show. Colors may be constant or animated as a function of `current_time` (e.g., fades, rainbow cycles, colors depending on position or height). Do not flash or blink faster than 2 times per second.
+8. **Execution**: Use the swarm_show_execute tool to run the show.
 
 ### Example Code Template
 
 ```python
 def swarm_show(current_time: float):
+    import colorsys
     import math
     
     # Example: Drones rotating in a circle with a safe 0.8m radius offset
@@ -73,10 +76,17 @@ def swarm_show(current_time: float):
     # Slow yaw rotations
     yaws = [angle % (2 * math.pi)] * 4
     
+    # Slowly cycling rainbow, each drone a quarter of the color wheel apart
+    colors = []
+    for i in range(4):
+        hue = (current_time * 0.1 + i / 4) % 1.0
+        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+        colors.append((int(r * 255), int(g * 255), int(b * 255)))
+    
     # End show after 60 seconds
     finished = current_time > 60.0
     
-    return setpoints, yaws, finished
+    return setpoints, yaws, colors, finished
 
 ```
 """

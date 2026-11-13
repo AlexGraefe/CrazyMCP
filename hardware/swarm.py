@@ -8,7 +8,7 @@ It reports progress back to whatever object implements :class:`SwarmGUI`
 import asyncio
 
 import numpy as np
-from .swarm_base import SwarmBase, SwarmState
+from .swarm_base import SwarmBase, SwarmState, rgb_to_wrgb
 from .swarm_logger import LoggingTask
 from .swarm_force_field_control import ForceFieldController
 
@@ -26,7 +26,9 @@ LOG_INTERVAL = 100  # ms
 PAD_POSITION_SAMPLES = 10  # number of reads averaged for pad positions
 STAGGER_STRIDE = 5   # launch/land every Nth drone per round (round 0: idx 0,4,8…; round 1: 1,5,9…)
 STAGGER_DELAY  = TAKEOFF_DURATION + 0.5  # seconds between stagger groups
-LED_COLORS = [0x00FF0000, 0x0000FF00, 0x000000FF, 0x00FF00FF]  # Red, Green, Blue (WRGB8888, cycles for >3 drones)
+LED_PARAM = "colorLedBot.wrgb8888"
+# Initial colors until the show sets its own: Red, Green, Blue, Magenta (WRGB8888, cycles for >4 drones)
+LED_COLORS = [0x00FF0000, 0x0000FF00, 0x000000FF, 0x00FF00FF]
 
 # -- Force-field navigation constants ----------------------------------------
 FF_LOG_INTERVAL             = 50     # ms – position-logger rate during goto
@@ -78,6 +80,8 @@ class Swarm(SwarmBase):
         self._virtual_positions: list[np.ndarray] = []
         self._target_positions: list[np.ndarray | None] = []
         self._target_yaws: list[float] = []
+        self._target_colors: list[int | None] = []  # WRGB8888, None = keep current
+        self._sent_colors: list[int | None] = []    # last WRGB8888 value sent per drone
 
     # -- State ---------------------------------------------------------------
 
@@ -356,9 +360,13 @@ class Swarm(SwarmBase):
         self._set_state(SwarmState.FLYING)
         try:
             print("Applying controller parameters for takeoff...")
+            self._target_colors = [None] * len(self._connected_cfs)
+            self._sent_colors = [
+                LED_COLORS[i % len(LED_COLORS)] for i in range(len(self._connected_cfs))
+            ]
             for i, cf in enumerate(self._connected_cfs):
                 param = cf.param()
-                param.set("colorLedBot.wrgb8888", LED_COLORS[i % len(LED_COLORS)])
+                param.set(LED_PARAM, self._sent_colors[i])
                 param.set("stabilizer.controller", 1)
 
             print(f"Reading pad positions ({PAD_POSITION_SAMPLES} reads, averaged)...")
@@ -424,18 +432,26 @@ class Swarm(SwarmBase):
             if self._position_logger:
                 await self._position_logger.stop()
 
-    def safegoto(self, positions: list, yaws: list | None = None) -> None:
+    def safegoto(self, positions: list, yaws: list | None = None, colors: list | None = None) -> None:
         """Update target positions consumed by the force-field loop.
 
         *positions* is a list of ``(x, y, z)`` tuples in real-world meters (or
         ``None`` to keep a drone at its current virtual position), one entry per
         connected drone.  *yaws* is an optional list of yaw angles in radians,
-        one per drone.  Returns immediately; the background loop will navigate
-        toward the new targets continuously.  Ignored if not currently flying.
+        one per drone.  *colors* is an optional list of ``(r, g, b)`` tuples
+        (0-255 per channel), one per drone; ``None`` (for the list or an entry)
+        keeps the current LED color.  Returns immediately; the background loop
+        will navigate toward the new targets continuously and push changed LED
+        colors.  Ignored if not currently flying.
         """
         if self._state != SwarmState.FLYING:
             return
         n = len(self._connected_cfs)
+        if colors is not None:
+            self._target_colors = [
+                rgb_to_wrgb(colors[i]) if i < len(colors) and colors[i] is not None else None
+                for i in range(n)
+            ]
         if yaws is not None:
             self._target_yaws = [float(yaws[i]) if i < len(yaws) else 0.0 for i in range(n)]
         else:
@@ -446,9 +462,20 @@ class Swarm(SwarmBase):
             for i in range(n)
         ]
 
-    def goto(self, positions: list, yaws: list | None = None) -> None:
+    def goto(self, positions: list, yaws: list | None = None, colors: list | None = None) -> None:
         """Alias for safegoto - update target positions using simpler name."""
-        return self.safegoto(positions, yaws)
+        return self.safegoto(positions, yaws, colors)
+
+    def _led_updates(self) -> list:
+        """Return param-set awaitables for every drone whose LED color changed."""
+        updates = []
+        for i, cf in enumerate(self._connected_cfs):
+            color = self._target_colors[i] if i < len(self._target_colors) else None
+            if color is None or (i < len(self._sent_colors) and self._sent_colors[i] == color):
+                continue
+            self._sent_colors[i] = color
+            updates.append(cf.param().set(LED_PARAM, color))
+        return updates
 
     # -- Force-field background loop -----------------------------------------
 
@@ -486,8 +513,10 @@ class Swarm(SwarmBase):
                         i for i in range(n)
                         if i < len(self._target_positions) and self._target_positions[i] is not None
                     ]
-                    if active:
+                    led_updates = self._led_updates()
+                    if active or led_updates:
                         await asyncio.gather(
+                            *led_updates,
                             *[
                                 self._connected_cfs[i].high_level_commander().go_to(
                                     float(next_positions[i][0]),
@@ -542,7 +571,7 @@ class Swarm(SwarmBase):
             return
         for cf in self._connected_cfs:
             param = cf.param()
-            param.set("colorLedBot.wrgb8888", 0x00000000)
+            param.set(LED_PARAM, 0x00000000)
         
         await asyncio.sleep(0.5)
 

@@ -15,6 +15,18 @@ class SwarmState(Enum):
     ERROR = auto()
 
 
+def rgb_to_wrgb(rgb) -> int:
+    """Pack an ``(r, g, b)`` color (0-255 per channel) into WRGB8888 (0xWWRRGGBB).
+
+    The color LED deck has a dedicated white LED, so the common part of the
+    three channels is moved into the white channel (same conversion as the
+    cfclient Color LED tab).  Out-of-range values are clamped.
+    """
+    r, g, b = (max(0, min(255, int(round(float(c))))) for c in rgb)
+    w = min(r, g, b)
+    return (w << 24) | ((r - w) << 16) | ((g - w) << 8) | (b - w)
+
+
 class SwarmBase(ABC):
     @property
     @abstractmethod
@@ -48,8 +60,11 @@ class SwarmBase(ABC):
         pass
 
     @abstractmethod
-    def safegoto(self, positions: list, yaws: list | None = None) -> None:
-        """Update target positions (in real-world meters) consumed by the force-field loop."""
+    def safegoto(self, positions: list, yaws: list | None = None, colors: list | None = None) -> None:
+        """Update target positions (in real-world meters) consumed by the force-field loop.
+
+        *colors* is an optional list of ``(r, g, b)`` tuples (0-255), one per drone.
+        """
         pass
 
     @abstractmethod
@@ -57,6 +72,6 @@ class SwarmBase(ABC):
         """Return current positions of all drones as (x, y, z) tuples."""
         pass
 
-    def goto(self, positions: list, yaws: list | None = None) -> None:
+    def goto(self, positions: list, yaws: list | None = None, colors: list | None = None) -> None:
         """Alias for safegoto - update target positions."""
-        return self.safegoto(positions, yaws)
+        return self.safegoto(positions, yaws, colors)
