@@ -6,7 +6,7 @@ from langchain.tools import tool
 from agent import create_agent
 from runner.swarm_runner import run_swarm_show
 
-_captured = {"swarm_show_func": None}
+_captured = {"swarm_show_func": None, "summary": None}
 
 # Testbed dimensions in meters — single source of truth for the flying volume.
 # Used for the LLM system prompt (so generated setpoints stay inside the safe
@@ -22,17 +22,21 @@ def _valid_port(value: str) -> int:
     return port
 
 
-@tool(parse_docstring=True)
-def swarm_show_execute(swarm_show_func: str) -> str:
+# return_direct ends the agent run right after the tool call: the code and the
+# summary are all we need, so the show can start without another LLM round trip.
+@tool(parse_docstring=True, return_direct=True)
+def swarm_show_execute(swarm_show_func: str, summary: str) -> str:
     """Execute a swarm show by generating and running a complete script.
 
     Args:
         swarm_show_func: Python function code for swarm_show(current_time: float).
+        summary: Short summary (2-3 sentences) of what the drones will do.
 
     Returns:
         Result message with exit code and captured output.
     """
     _captured["swarm_show_func"] = swarm_show_func
+    _captured["summary"] = summary
     return "Code captured. Will run after LLM finishes."
 
 
@@ -44,6 +48,7 @@ def _run_agent(
     gpu_port: int,
 ) -> None:
     _captured["swarm_show_func"] = None
+    _captured["summary"] = None
 
     agent = create_agent(
         testbed_min=TESTBED_MIN,
@@ -57,24 +62,29 @@ def _run_agent(
         {"messages": [{"role": "user", "content": prompt}]},
         version="v3",
     )
+    print("Generating swarm show...")
+    # Iterating drives the run. Only the code and the summary handed to the
+    # tool are shown, so the streamed reasoning and text are not printed.
+    reply = ""
     for message in stream.messages:
-        for token in message.reasoning:
-            print(f"[thinking] {token}", end="", flush=True)
-        for token in message.text:
-            print(token, end="", flush=True)
-    print()
+        reply = "".join(message.text).strip() or reply
 
     swarm_show_func = _captured["swarm_show_func"]
     if swarm_show_func is None:
         print("LLM did not generate a swarm show function.")
+        if reply:
+            # Without a show, the reply is the only hint at what went wrong.
+            print(reply)
         return
 
     print("--- Generated swarm_show function ---")
     print(swarm_show_func)
     print("-------------------------------------")
+    if _captured["summary"]:
+        print(f"\n{_captured['summary'].strip()}\n")
 
     print("Running experiment...")
-    exit_code, stdout, stderr = asyncio.run(
+    asyncio.run(
         run_swarm_show(
             swarm_show_func,
             num_drones=3,
@@ -85,11 +95,6 @@ def _run_agent(
             testbed_max=TESTBED_MAX,
         )
     )
-    if stdout:
-        print(stdout)
-    if stderr:
-        print(stderr)
-    print(f"Exit code: {exit_code}")
 
 
 def run() -> None:

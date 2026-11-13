@@ -100,7 +100,10 @@ async def _run_script(script_path: str) -> tuple[int, str, str]:
 
     stdout_text = stdout_path.read_text()
     stderr_text = stderr_path.read_text()
-    print(f"Script output (logs: {stdout_path}, {stderr_path}):\n{stdout_text}\n{stderr_text}")
+    print(
+        f"Show finished (exit code {proc.returncode}). "
+        f"Logs: {stdout_path}, {stderr_path}"
+    )
     if terminate_requested:
         raise SystemExit(128 + signal.SIGTERM)
     return proc.returncode, stdout_text, stderr_text
