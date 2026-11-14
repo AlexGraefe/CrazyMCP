@@ -24,9 +24,9 @@ def swarm_show(current_time: float):
 
 * **Input:** `current_time` (float), representing the elapsed time in seconds since the show started.
 * **Return Values:** A 4-tuple containing:
-1. `setpoints`: A list of 4 tuples, where each tuple is `(x, y, z)` in meters.
-2. `yaws`: A list of 4 floats representing the yaw angle for each drone in radians.
-3. `colors`: A list of 4 tuples, where each tuple is the LED color `(r, g, b)` of one drone, each channel an integer from 0 to 255. `(0, 0, 0)` switches the LED off.
+1. `setpoints`: A list of 3 tuples, where each tuple is `(x, y, z)` in meters.
+2. `yaws`: A list of 3 floats representing the yaw angle for each drone in radians.
+3. `colors`: A list of 3 tuples, where each tuple is the LED color `(r, g, b)` of one drone, each channel an integer from 0 to 255. `(0, 0, 0)` switches the LED off.
 4. `finished`: A boolean (`True` if the show is over and drones should land, `False` otherwise).
 
 
@@ -66,21 +66,20 @@ def swarm_show(current_time: float):
     x1, y1 = 0.8 * math.cos(angle), 0.8 * math.sin(angle)
     x2, y2 = -0.8 * math.cos(angle), -0.8 * math.sin(angle)
     
-    # 4 distinct, collision-free setpoints
+    # 3 distinct, collision-free setpoints
     setpoints = [
         (x1, y1, 1.2),
         (x2, y2, 1.2),
-        (0.5, 0.5, 1.5),
-        (-0.5, -0.5, 1.5)
+        (0.0, 0.0, 1.5)
     ]
     
     # Slow yaw rotations
-    yaws = [angle % (2 * math.pi)] * 4
+    yaws = [angle % (2 * math.pi)] * 3
     
-    # Slowly cycling rainbow, each drone a quarter of the color wheel apart
+    # Slowly cycling rainbow, each drone a third of the color wheel apart
     colors = []
-    for i in range(4):
-        hue = (current_time * 0.1 + i / 4) % 1.0
+    for i in range(3):
+        hue = (current_time * 0.1 + i / 3) % 1.0
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         colors.append((int(r * 255), int(g * 255), int(b * 255)))
     

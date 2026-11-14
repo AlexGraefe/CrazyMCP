@@ -81,7 +81,7 @@ uv pip install bitsandbytes
 
 ## How to run the repo:
 
-Turn on the four drones. Their address is D91F7001.
+Turn on the three drones. Their address is D91F7001.
 
 On the GPU PC, run:
 ```bash
